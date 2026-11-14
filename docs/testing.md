@@ -300,6 +300,8 @@ weigh step 1/7 rc=16 … 7/7 rc=24 → weigh-in done
 | 17 | 水浸传感器（小白版独立工程） | ✅ 通过 | 2026-11-14 | SJWS01LM（PID **0x0863**），`esp32/leak_adv` 430 行。派生 MAC `10:00:3B:CE:5F:03` + NVS `leak`；米家添加一次过（`CMD_REGISTER(0xA2)` → `REGISTER COMPLETE 0x11`，did `00 62 6C 74`，bound=1）→ 短按 BOOT 连发 3 帧 `0x1014=1`（漏水），设备页转「漏水」并进「感应记录」。与 `multi_dev` 档案相比：独立 NVS/MAC、事件连发 3 帧 + 2 分钟唤醒窗口（老档案只翻转广播值）。未单独复测「解除」方向、电量显示 `--` 属已知心跳现象 |
 | 19 | 夜灯2（小白版独立工程） | ✅ 通过（绑定 + 详情页连通） | 2026-11-14 | MUE4094RT（PID **0x03DD**），`esp32/nightl2_adv` 2143 行 + GATT 1917 行。全仓库唯一详情页走 **NUS 文本协议**：legacy token 绑定 → ag2（001A/001B）建链 → device info → `6E400001/2/3` 收发 `get_prop` / `set_bright` / `apply_fixed_scene`。单型号、不编 Mesh、NVS `nightl2`、MAC `10:00:3B:CE:70:03`、默认强制待绑定广播（`advu 0` 可切）。**未烧真机**，验收清单见 §19 |
 | 20 | 全量构建回归自检（12 工程） | ✅ 通过 | 2026-11-14 | `tools/build_all.sh` 一轮全编：12/12 通过、零告警，总耗时约 15 分钟。起因是体脂秤改 `scale_s400_store_offline` 签名后 `multi_dev` 静默编译不过（已在 `dd810fb` 修复）。设备验收只证明「这台能用」，这一节证明「别的没坏」。`plant_monitor_*` 无 CMakeLists，不在范围 |
+| 21 | LED 灯泡 蓝牙 Mesh 版（MJDP003） | ❌ 绑定被拒 `-27` | 2026-11-14 | `esp32/bulb_gatt` 734 行。2026-08-31 上架，官方「手机蓝牙直连无需网关」；属性 2.1 开 / 2.2 亮度 1~65535 / 2.3 色温 2700~6500K。启动横幅、0xFE95 四特征、广播帧（`70 28 eb 06…`，名 MJDP003，MAC …71:05）、串口 on/bright/ct/pid 全部实测。**PID 0x06EB 走不通**：spec 直连 + 挂 NimBLE Mesh 栈（0x1827/2adb/2adc 就位）两种形态，App 都在 400ms 内「读完服务表、零写入即断开」→ 拒绝点在 PID 类型层。详见 troubleshooting Q11 |
+| 22 | 甲醛检测仪（小白版独立工程） | ✅ 通过（绑定） | 2026-11-14 | JQJCY01YM（PID **0x02DF**），`esp32/hcho_adv` 580,368 B。派生 MAC `10:00:3B:CE:61:03` + NVS `hcho`；广播 `70 2a | df 02 | 05 | 03 61 ce 3b 00 10 | 11 | 11 10 01 00`（名 JQJCY01YM，RSSI −47）。米家添加一次过（did `00 62 6C 74`，bound=1，重启后串口打印「已绑定」）。四槽轮播 `0x1010` 甲醛 / `0x1004` 温度 / `0x1006` 湿度 / `0x100A` 电量；短按 BOOT = 甲醛「合格 0.02 / 超标 0.30」切换并连发 3 帧，长按 5s 恢复出厂 |
 
 ### 15. 门窗传感器 2（`esp32/door_adv`）
 
@@ -434,3 +436,108 @@ bash tools/build_all.sh scale_adv    # 只编一个
 
 > 判据：只看末尾 `PASS (12)` 与 `FAIL` 行是否为空。固件大小只用来发现"编出来的其实是旧的"——
 > 如果某工程大小和前一轮完全一致、耗时却只有 8 秒，那是增量空转，删 `build/` 重编才算数。
+
+### 21. LED 灯泡 蓝牙 Mesh 版（`esp32/bulb_gatt`）—— 已烧录，PID 填 0x06EB 待绑定
+
+`MJDP003`（2026-08-31 上架 29.9 元，E27 / 500lm / 2700–6500K）。选它的原因：夜灯 3（MJYD06YL）
+和夜灯 4 都没有蓝牙，官方明确「不支持蓝牙、不支持米家」；这支是 2026 这波里唯一
+「支持手机蓝牙直连、无需网关」的灯。**它是 Mesh 产品，但单灯直连走的是标准 spec 会话**，
+属性 `2.1 on` / `2.2 brightness(1~65535)` / `2.3 color-temperature(2700~6500)`。
+
+**① 2026-11-14 21:36 首烧（PID 空着，595,024 B）**
+
+```
+I (145) BULB: ===== 米家 LED 智能灯泡 蓝牙 Mesh 版（MJDP003）=====
+I (145) BULB: LED: GPIO8 低电平点亮, 5000Hz PWM（2.2 亮度 → 占空比）
+I (385) MIOT-GATT: 0xFE95 service registered (0010/0019/001A/001B)
+I (385) BULB: host synced, MAC 10:00:3B:CE:71:05  PID=0x0000 bound=0
+```
+
+PC 侧扫描（PID 临时写成 0x1A2B 验证运行期可改）：
+
+```
+svc 70 28 | 2b 1a | 34 | 05 71 ce 3b 00 10 | 11 | 11 10 01 00
+            PID(LE)      MAC = 10:00:3B:CE:71:05
+mfg 30 20 | 2b1a | …      ← registered=0x20（未注册）
+name MJDP003   RSSI −55
+```
+
+串口命令逐条验证：`on → 2.1=1`、`bright 30 → 2.2=19660`、`bright 100 → 2.2=65535`、
+`ct 5000 → 2.3=5000K`、`off → 2.1=0`、`pid 0x1A2B` 写入后重启并保持。
+
+**② 2026-11-14 21:58 填 PID 0x06EB 重烧（595,184 B，erase-flash 后写三镜像）**
+
+PID 来源：`MJDP003` 是 `MJDP09YL` 的替代型号，后者在 XiaomiGateway3 产品字典里是
+**pdid 1771 = 0x06EB**；同品类换代沿用 pdid，故先填此值。
+
+```
+I (145) BULB: ===== 米家 LED 智能灯泡 蓝牙 Mesh 版（MJDP003）=====
+I (145) BULB: PID 0x06EB  MAC 后续打印
+I (385) MIOT-GATT: 0xFE95 service registered (0010/0019/001A/001B)
+I (385) BULB: host synced, MAC 10:00:3B:CE:71:05  PID=0x06EB bound=0
+```
+
+广播帧（bleak，RSSI −58）：
+
+```
+70 28 | eb 06 | 0b | 05 71 ce 3b 00 10 | 11 | 11 10 01 00
+        PID=0x06EB       MAC LSB            capability
+mfg 30 20 | eb 06 | …     ← registered=0x20，米家「添加」只认这个
+name MJDP003
+```
+
+`erase-flash` 是必需的：NVS 的 `pid` 键优先级高于编译默认值，上一轮的 0x1A2B 会盖掉 0x06EB。
+
+| # | 操作 | 预期 |
+|---|---|---|
+| 21.0 | 扫真机 `0xFE95` Service Data | 第 3~4 字节（小端）= PID；串口 `pid 0xXXXX` 写入（自动重启，不用重编） |
+| 21.1 | `erase-flash flash` | 横幅 + `PID 0x06EB  MAC 后续打印`；NVS 留有旧号时会多打一行 warning |
+| 21.2 | 米家 + → 附近设备 | 出现这台灯；`AUTH_INIT` → `token` → `BOND` → `DeviceID` → `GETRAND` → `LOGIN 0x21` |
+| 21.3 | 设备页点开关 | 串口 `properties_changed 2.1`，页面状态跟随，板载灯亮/灭 |
+| 21.4 | 拖亮度到 30% | `2.2` 收到并按比例缩短占空比，页面数字与灯亮度一致 |
+| 21.5 | 拖色温到 5000K | `2.3` 落值 + 日志；**单色灯看不出色温变化，属预期** |
+| 21.6 | 短按 BOOT / 长按 3s | 短按翻开关并回推；长按恢复出厂（`bound=0`） |
+| 21.7 | 删设备重加 | **先 `factory`**，否则广播带 registered 态，扫描列表过滤 |
+
+> 判据：21.3 的 `properties_changed` 是「插件认账」的唯一证据 —— 只改本地值不回推，
+> 页面会先乐观更新、重进就回落。
+
+---
+
+## 22. 甲醛检测仪（`esp32/hcho_adv`）—— 2026-11-14 实机通过
+
+从 `leak_adv` 骨架抽出，唯一改动是 PID / MAC / 对象表 / 按键语义（`★` 标记处）。
+
+```
+I (142) HCHO: ===== 甲醛检测仪 小白版（JQJCY01YM / 0x02DF）=====
+I (332) BLE_INIT: Bluetooth MAC: 10:00:3b:ce:61:03
+I (382) MIOT-GATT: 0xFE95 service registered (0010/0019/001A/001B)
+I (392) HCHO: 协议栈就绪  MAC 10:00:3B:CE:61:03  未绑定（等待米家添加）
+```
+
+PC 侧扫描（未绑定态）：
+
+```
+svc 70 2a | df 02 | 05 | 03 61 ce 3b 00 10 | 11 | 11 10 01 00
+            PID=0x02DF        MAC LSB        cap  ↑ 0x1011=0「待绑定」
+name JQJCY01YM   RSSI −47
+mfg 30 20 | df 02 | …        ← registered=0x20
+```
+
+米家「+ → 附近设备」→ 点 JQJCY01YM → 一次过绑上。绑定后重启串口打印：
+
+```
+I (142) HCHO: 读到已保存的绑定身份（did 00 62 6C 74）
+I (402) HCHO: 协议栈就绪  MAC 10:00:3B:CE:61:03  已绑定
+```
+
+| # | 操作 | 预期 |
+|---|---|---|
+| 22.1 | `erase-flash flash` | 横幅 + `未绑定`；广播 `70 2a df 02 …`，名字 JQJCY01YM |
+| 22.2 | 米家 → 附近设备 → 添加 | 一次过；串口 `CMD_REGISTER(0xA2)` → `REGISTER COMPLETE 0x11` → `bound=1` |
+| 22.3 | 重启板子 | 串口「已绑定」，广播切加密形态（`70 5b …`） |
+| 22.4 | 短按 BOOT | 甲醛在 0.02 / 0.30 之间切，连发 3 帧 `0x1010`，设备页数值跟随 |
+| 22.5 | 长按 5 秒 | 擦 NVS 重启，回到未绑定态 |
+
+**与 `multi_dev` 里的甲醛档案的差别**：独立 NVS（`hcho`）与 MAC（`…:61:03`），避开米家按 MAC 去重；
+四槽轮播固定 4 秒一轮（老档案靠全局轮播位）；按键触发的是「超标/恢复」而不是翻转一个布尔值。

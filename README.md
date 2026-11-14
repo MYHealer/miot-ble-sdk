@@ -104,6 +104,8 @@ App 建立会话后 `login=1`。三态的含义见 [docs/troubleshooting.md](doc
 | [`esp32/motion_adv`](esp32/motion_adv) | 人体传感器 2（0x0A8D） | 430 行 | ✅ 2026-11-14 实机：米家添加一次过（`REGISTER COMPLETE 0x11`）→ 短按 BOOT 连发 3 帧 `0x000F=1`（有人）→ 60s 后自动回落无人。**小白版**，与 `door_adv` 同骨架，派生 MAC `…:5E:03` |
 | [`esp32/leak_adv`](esp32/leak_adv) | 水浸传感器（0x0863） | 430 行 | ✅ 2026-11-14 实机：米家添加一次过（`REGISTER COMPLETE 0x11`）→ 短按 BOOT 连发 3 帧 `0x1014=1`（漏水），设备页转「漏水」并进感应记录。**小白版**，派生 MAC `…:5F:03` |
 | [`esp32/nightl2_adv`](esp32/nightl2_adv) | 夜灯2（MUE4094RT / 0x03DD） | 2143 行 (+1917 行 GATT) | ✅ 2026-11-14 实机：烧录通过 → 米家添加成功（`bound=1`，did 入库）→ 详情页连通轮询。**注意**：重烧固件后手机必须关/开蓝牙，否则 Android 命中旧 GATT 缓存必然 `status 133` 超时。全仓库唯一详情页走 **NUS 文本协议** 的设备——legacy token 绑定 + ag2 建链（001A/001B）+ `6E400001/2/3` 收发 `get_prop` / `set_bright` / `apply_fixed_scene`。单型号、不编 Mesh、NVS `nightl2`、MAC `…:70:03`、默认待绑定广播（`advu 0` 可切）。链路来自 `multi_dev` 实机验证；已知：详情页偶发超时 / 删设备重加先 `factory` / 无「如果」触发条件 |
+| [`esp32/bulb_gatt`](esp32/bulb_gatt) | LED 灯泡 蓝牙 Mesh 版（MJDP003） | 734 行 (+245 行 GATT) | ❌ **2026-11-14 编译 + 烧录 + 广播实测通过，但米家绑定被拒 `-27`**：spec 直连、以及挂 NimBLE Mesh 栈（0x1827/2adb/2adc 就位）两种形态都试过，App 都在 400ms 内「读完服务表、零写入即断开」→ 拒绝点在 PID 类型层。`0x06EB` 是 MJDP09YL 的代号，只能等 MJDP003 真机扫一帧取真 PID（串口 `pid 0xXXXX` 写入，不用重编） |
+| [`esp32/hcho_adv`](esp32/hcho_adv) | 甲醛检测仪（JQJCY01YM / 0x02DF） | 559 行 | ✅ 2026-11-14 实机：米家添加一次过（did `00 62 6C 74`，bound=1，重启后仍「已绑定」）。派生 MAC `…:61:03` + NVS `hcho`；四槽轮播 `0x1010` 甲醛 / `0x1004` 温度 / `0x1006` 湿度 / `0x100A` 电量；短按 BOOT = 甲醛「合格 0.02 / 超标 0.30」切换并连发 3 帧。**小白版** |
 | [`esp32/wx08zm_gatt`](esp32/wx08zm_gatt) | 驱蚊器 智能版（0x040A） | 944 行 | ⚠️ 编译通过、能回待绑定态；legacy PSK 握手是否被云端接受**尚未真机验证** |
 
 骨架同构（`thermo_gatt` 是最干净的那份，`door_adv`/`motion_adv` 是最适合照抄改型号的小白版），换型号只改三处：**PID、spec 属性表、广播对象号**。
@@ -195,7 +197,7 @@ void app_main(void) {
 
 | # | 设备名 | 型号 / PID | 描述 | 验证状态 | 详情（代码） |
 |---|--------|-----------|------|----------|--------------|
-| 6 | 甲醛检测仪 | JQJCY01YM（PID 0x02DF） | 0x1010 甲醛(0.01mg/m³) / 0x1004 温度 / 0x1006 湿度 / 0x100A 电量，三路轮换分帧 | ✓ | [examples/sensor_hcho/](examples/sensor_hcho/main.c) · `miot_beacon.h` |
+| 6 | 甲醛检测仪 | JQJCY01YM（PID 0x02DF） | 0x1010 甲醛(0.01mg/m³) / 0x1004 温度 / 0x1006 湿度 / 0x100A 电量，四槽轮播分帧 | ✓（2026-11-14 独立工程实机：绑定 + 重启保持） | [esp32/hcho_adv/](esp32/hcho_adv) · [examples/sensor_leak/](examples/sensor_leak/main.c) |
 | 7 | 门窗传感器2 | MCCGQ02HL（PID 0x098B） | 0x1019 开合(开/关/超时未关/复位) / 0x1018 光照 / 0x100A 电量 | ✓（2026-11-14 独立工程实机） | [esp32/door_adv/](esp32/door_adv) · [examples/sensor_door/](examples/sensor_door/main.c) |
 | 8 | 人体传感器2 | RTCGQ02LM（PID 0x0A8D） | 0x000F 移动+光照 / 0x1017 无人时长 / 0x100A 电量 | ✓（2026-11-14 独立工程实机） | [esp32/motion_adv/](esp32/motion_adv) · [examples/sensor_motion/](examples/sensor_motion/main.c) |
 | 9 | 水浸传感器 | SJWS01LM（PID 0x0863） | 0x1014 漏水状态(0=正常 >0=漏水) / 0x100A 电量 | ✓（2026-11-14 独立工程实机） | [esp32/leak_adv/](esp32/leak_adv) · [examples/sensor_leak/](examples/sensor_leak/main.c) |

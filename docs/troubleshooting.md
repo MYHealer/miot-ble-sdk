@@ -157,3 +157,97 @@ asyncio.run(main())
 
 > 另一个容易自己坑自己的点：ESP32-C3 走 USB-Serial-JTAG，**每次打开串口都会复位芯片**。
 > 一边抓日志一边让手机连，连接会被复位打断，看起来就像「又超时了」。
+
+---
+
+## Q11. 添加设备时弹「-27」
+
+**官方定义**（小米 IoT 平台《BLE 类产品开发常见问题》）：`-27 = Enable Notify 失败`，
+常见原因是**扩展程序端判定的设备类型与固件端不一致** —— 例如 App/插件认为这是一台
+「高安全设备」（要求安全芯片证书链），而固件做的是标准认证；Mesh 设备则表现为 App
+去订阅 Mesh Proxy 通道的 notify，而固件只注册了 `0xFE95` 的 spec 特征。
+
+**先看懂这个码的价值**：能弹 `-27` 说明三件事都成立 —— PID 被 App 认出来了、设备出现在
+「附近设备」列表、GATT 连接也建立了。它比「扫不到」前进了一大步，**问题不在广播帧**。
+配套的「扫不到」才查 PID/registered 位（见 Q2）。
+
+**排查顺序**（成本从低到高）
+
+| 步骤 | 做法 | 判据 |
+|---|---|---|
+| 1 | 米家里删掉同名旧设备 → 手机后台杀掉米家 → 清缓存 → 重进 | 官方 FAQ 第一条；旧绑定记录残留也会报 -27 |
+| 2 | 换 PID 重烧（`pid 0xXXXX` + `erase-flash`） | 换到「标准认证 + BLE 直连」的档案才可能过 |
+| 3 | 查该 PID 在米家的归属 | 灯具类里 `0x06EB`（MJDP09YL）/ `0x0926`（Yeelight Mesh Bulb M2）都是 **Mesh 插件**，要 Mesh 通道，spec 直连固件必 -27 |
+
+**不要误判的点**：特征数量不是原因。`0x055B`（温湿度计2）、`0x03DD`（夜灯2）同为
+`0010/0019/001A/001B` 四个特征，纯净 App 都能绑 —— 所以不要为了消 `-27` 去加
+`0x0017/0x0018`，那是 Mesh 协议栈的入口，不是补个空特征就能骗过去的。
+
+**2026-11-14 实例**：`esp32/bulb_gatt` 填 `0x06EB` 后米家报 `-27`。该 PID 对应
+MJDP09YL —— 米家 Mesh 灯泡（插件 `yeelink.light.meshbulb1`，官方要求 Mesh 网关），
+而本工程走的是 spec 直连，类型先天不匹配。结论：灯具要「真能绑」，目前只有
+`0x03DD`（夜灯2）这条已验证的路。
+
+**2026-11-14 22:06 logcat 实证**（`adb logcat`，米家 18799 进程）——`0x06EB` 的完整时间线：
+
+```
+22:06:54.332  BluetoothGattServer  连接建立（device …71:05）
+22:06:54.648  BluetoothGatt        discoverServices()
+22:06:54.829  BluetoothGatt        onSearchComplete() status=0      ← GATT 表读到了
+22:06:54.917  BluetoothGatt        cancelOpen()
+22:06:54.925  BluetoothGatt        onClientConnectionState connected=false
+22:06:54.926  BluetoothGatt        refresh()                        ← App 还主动刷了缓存
+```
+
+**593ms 内零次 `setCharacteristicNotification` / `writeDescriptor` / `writeCharacteristic`。**
+服务发现一成功就主动断开——这不是「订阅失败」，是 App 拿到 GATT 表后判定
+「这台不是我认识的设备类型」，直接放弃，再把结果映射成 `-27`。
+
+三个推论：
+1. 固件的 notify 注册**没问题**（压根没走到订阅那一步），别再去改 CCCD。
+2. Android GATT 缓存也**不是**原因（App 自己调了 `refresh()`）。
+3. PID 就是原因本身：`0x06EB` 在米家产品库里是 Mesh 灯泡，App 期望的是 Mesh 通道。
+
+**判据表**（下次直接用）：
+
+| 现象 | 含义 |
+|---|---|
+| 列表里根本没有 | PID 错 / registered 位不对 / 扫描过滤 |
+| 连上很快就断，无任何 write | **PID 类型不匹配**（本例，-27） |
+| 有 `setCharacteristicNotification` 后失败 | 特征/CCCD 注册问题 |
+| 写了 `0xA2` 但无 `0x11` 回应 | 认证链路问题（查 nonce/时间戳） |
+
+### Q11 附：挂上 Mesh 栈之后仍然 `-27`（2026-11-14 22:28 复核）
+
+把 `multi_dev` 的米家 Mesh 承载（NimBLE Mesh + 6 个移植补丁 + vendor model `0x038f0000`）
+整段搬到 `bulb_gatt`，让设备真的同时具备 spec 通道和 SIG Mesh 配网通道，再添加一次：
+
+```bash
+串口：MIOT-MESH: bt_mesh_init OK  elems=1  models=cfg+health+vnd
+      MIOT-MESH: prov_enable rc=0     （PB-ADV/PB-GATT beacon 已开）
+GATT：0000fe95  0010/0019/001A/001B
+      00001827  Mesh Provisioning  2adb(Data In) / 2adc(Data Out + CCCD)
+```
+
+App 侧（米家 18799）时间线 —— **与没有 Mesh 栈时逐毫秒同构**：
+
+```
+22:28:07.372  discoverServices()
+22:28:07.648  onSearchComplete() status=0     ← 上面那张表它全拿到了
+22:28:07.742  cancelOpen()                    ← 94ms 后放弃
+22:28:07.752  断开 + unregisterApp
+22:28:07.760  refresh() + close()
+```
+
+**零次** `setCharacteristicNotification` / `writeDescriptor` / `writeCharacteristic` ——
+连 PB-GATT 的 `2adb` 都没碰过。所以：
+
+- 0x1827 / 2ADB / 2ADC 齐备也**不改变结论**，Mesh 通道不是缺的东西；
+- 拒绝点在 **PID → 插件类型** 这一层（App 扫描阶段就知道 PID，连接只是复核），
+  任何 GATT 侧增删都不会让 `-27` 消失；
+- 结论：MJDP003 想绑上，只能拿到**真机真 PID** 并确认它到底走哪种承载；
+  用 MJDP09YL 的 pdid 顶替是死路。本次试验的代码已回滚，`bulb_gatt` 回到纯 spec 形态。
+
+**副作用留档**：Mesh 栈注册 GATT 服务必须在 host 启动（`ble_gatts_start`）之前完成，
+晚了 PB-GATT 的 handle 解析会断言崩溃；Mesh 起来后 `bt_le_adv_start` 会抢广播实例，
+MiBeacon 必须让位给 mesh beacon，否则设备在空中消失。这两条在 `multi_dev` 里已有实现。
