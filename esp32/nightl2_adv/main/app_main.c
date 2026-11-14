@@ -37,6 +37,7 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "driver/gpio.h"
+#include "driver/ledc.h"
 #include "esp_log.h"
 #include "esp_mac.h"
 #include "esp_random.h"
@@ -232,6 +233,7 @@ static uint32_t s_login_ms;         /* 会话建立时刻，用来排除握手�
 static int      s_was_bound;
 static volatile int s_weigh_req;    /* BOOT 短按置位，主循环消费 */
 static volatile int s_adv_req;      /* BOOT 短按：请求一次「配对唤醒」广播 */
+static volatile int s_nl_sw_req;    /* BOOT 短按：翻转 2.3 开关（主循环消费） */
 static uint32_t s_fast_until;       /* 快广播截止时刻（ms） */
 
 /* 夜灯2 的传感器上报（米家自动化唯一的数据来源）。
@@ -481,6 +483,81 @@ static uint8_t prop_u8(uint8_t siid, uint16_t piid, uint8_t dflt)
     miot_prop_t *p = miot_props_find(s_tbl, s_tbl_cnt, siid, piid);
     if (!p || !p->ptr) return dflt;
     return (p->size == 1) ? *(uint8_t *)p->ptr : (uint8_t)(*(uint32_t *)p->ptr);
+}
+
+/** 从属性表里写一个 uint8（BOOT 改开关时用；App 改的时候走 SDK 的 set 回调） */
+static void prop_u8_set(uint8_t siid, uint16_t piid, uint8_t val)
+{
+    if (!s_tbl) return;
+    miot_prop_t *p = miot_props_find(s_tbl, s_tbl_cnt, siid, piid);
+    if (!p || !p->ptr) return;
+    if (p->size == 1) *(uint8_t *)p->ptr = val;
+    else              *(uint32_t *)p->ptr = val;
+}
+
+/* ==================== 板载灯输出（BOOT 控制的那盏灯） ====================
+ * 属性表里 2.3 是开关、2.1 是亮度，但 SDK 只把值存进变量（`nl_on_any()` 是空函数），
+ * 板子上原本没有任何输出。这里补一段 LEDC PWM，让「开/关 + 亮度」真的作用到一颗灯上：
+ *
+ *     2.3 = 0            -> 熄灭
+ *     2.3 = 1, 2.1 = N%  -> 按 N% 亮度点亮（N 最小 1%）
+ *
+ * 换灯只改下面两个常量：GPIO8 + 低电平点亮是 ESP32-C3 SuperMini 的板载蓝灯；
+ * 外接 LED / 灯带（高电平点亮）把 NL_LED_ACTIVE_LOW 改成 0。
+ */
+#define NL_LED_GPIO        8
+#define NL_LED_ACTIVE_LOW  1
+#define NL_LED_PWM_HZ      5000
+#define NL_LED_DUTY_BITS   LEDC_TIMER_10_BIT     /* 0 ~ 1023 */
+#define NL_LED_DUTY_MAX    1023
+
+static int s_led_duty = -1;      /* 已写入的占空比；-1 = 还没初始化 */
+
+static void led_init(void)
+{
+    ledc_timer_config_t tcfg = {
+        .speed_mode      = LEDC_LOW_SPEED_MODE,
+        .duty_resolution = NL_LED_DUTY_BITS,
+        .timer_num       = LEDC_TIMER_0,
+        .freq_hz         = NL_LED_PWM_HZ,
+        .clk_cfg         = LEDC_AUTO_CLK,
+    };
+    ledc_timer_config(&tcfg);
+
+    ledc_channel_config_t ccfg = {
+        .gpio_num   = NL_LED_GPIO,
+        .speed_mode = LEDC_LOW_SPEED_MODE,
+        .channel    = LEDC_CHANNEL_0,
+        .timer_sel  = LEDC_TIMER_0,
+        .duty       = NL_LED_ACTIVE_LOW ? NL_LED_DUTY_MAX : 0,   /* 上电先灭 */
+        .hpoint     = 0,
+    };
+    ledc_channel_config(&ccfg);
+
+    s_led_duty = NL_LED_ACTIVE_LOW ? NL_LED_DUTY_MAX : 0;
+    ESP_LOGI(TAG, "LED: GPIO%d %s, %dHz PWM（2.3 开关 / 2.1 亮度）",
+             NL_LED_GPIO, NL_LED_ACTIVE_LOW ? "低电平点亮" : "高电平点亮", NL_LED_PWM_HZ);
+}
+
+/** 开关 + 亮度 -> 占空比。低电平点亮的板子要取反。 */
+static void led_apply(uint8_t power, uint8_t bright)
+{
+    int on = 0;
+    if (power) {
+        on = bright > 100 ? 100 : (bright < 1 ? 1 : (int)bright);
+    }
+    int duty = (NL_LED_DUTY_MAX * on) / 100;
+    if (NL_LED_ACTIVE_LOW) duty = NL_LED_DUTY_MAX - duty;
+    if (duty == s_led_duty) return;          /* 没变就别碰外设，省得抖 */
+    s_led_duty = duty;
+    ledc_set_duty(LEDC_LOW_SPEED_MODE, LEDC_CHANNEL_0, (uint32_t)duty);
+    ledc_update_duty(LEDC_LOW_SPEED_MODE, LEDC_CHANNEL_0);
+}
+
+/** 主循环每轮调用：属性一变就跟着改灯（App 改 / BOOT 改都走这一条路）。 */
+static void led_sync(void)
+{
+    led_apply(prop_u8(2, 3, 0), prop_u8(2, 1, 50));
 }
 
 static volatile uint32_t s_sub_ms;
@@ -1660,15 +1737,31 @@ static void cli_task(void *arg)
             esp_restart();
         } else if (!strcmp(line, "reboot")) {
             esp_restart();
+        } else if (!strncmp(line, "sw", 2)) {
+            /* sw      -> 翻转开关（等价于按一下 BOOT）
+             * sw 0/1  -> 直接置关/开
+             * 只改 2.3 与板载灯；连着手机时同步回推 properties_changed。 */
+            const char *arg = line + 2;
+            while (*arg == ' ') arg++;
+            if (*arg == '0' || *arg == '1') {
+                prop_u8_set(2, 3, (uint8_t)(*arg - '0'));
+                led_sync();
+                ESP_LOGW(TAG, "SW 设为 %c（2.3=%u）", *arg, (unsigned)prop_u8(2, 3, 0));
+                if (s_auth.logged_in && gatt_miot_is_connected()) push_table();
+            } else {
+                s_nl_sw_req = 1;          /* 交给主循环，和 BOOT 走同一条路 */
+                ESP_LOGW(TAG, "SW 翻转请求已入队（主循环执行）");
+            }
         } else if (*line) {
-            ESP_LOGW(TAG, "命令: dev [N] | info | tok | key <24hex> | log | handles | frames | gr [N] | fc [22|58] | advu [0|1] | setmacv N | newmac | weight [值] [阻抗] | factory | reboot");
+            ESP_LOGW(TAG, "命令: dev [N] | info | sw [0|1] | nl <text> | tok | log | advu [0|1] | newmac | factory | reboot");
             ESP_LOGW(TAG, "      pid [XXXX] | objs [T H B] | hunt [0|1]  —— 网关无数据对冲（不改绑定）");
         }
     }
 }
 
 /* ---------------- BOOT 键（GPIO9，板载 BOOT）
- * 短按   = 让秤「称一次」（走 scale_s400_report 全链路）
+ * 短按   = 翻转开关 2.3（灯跟着亮/灭；连着手机时回推 properties_changed）
+ *          另外照旧触发一次「配对唤醒」快广播
  * 长按 5s = 恢复出厂（清绑定身份，回到未注册 hello 广播）
  *
  * 为什么按键触发而不是串口命令：这块板子的 console 走 USB-Serial-JTAG，
@@ -1704,7 +1797,8 @@ static void btn_task(void *arg)
                  * 这一步毫无响应，App 就一直停在那个提示/按钮上（实测卡住）。
                  * 顺带保留 S400 的称重语义，两个动作互不冲突。 */
                 s_adv_req = 1;
-                ESP_LOGW(TAG, "BOOT press %dms -> pairing adv + weigh-in", ms);
+                s_nl_sw_req = 1;      /* 同时当成物理开关：翻 2.3 + 回推状态 */
+                ESP_LOGW(TAG, "BOOT press %dms -> toggle switch + pairing adv", ms);
                 /* 别再给开关档案塞称重请求：只会每按一次就打一行「只对 S400 有效」，
                  * 真正的动作是它自己的按键事件。 */
                 if (s_sel == 2)                    s_weigh_req = 1;
@@ -1894,6 +1988,7 @@ void app_main(void)
     ble_att_set_preferred_mtu(247);
 
     nimble_port_freertos_init(host_task);
+    led_init();                 /* 灯输出：GPIO8 LEDs PWM，跟随 2.1/2.3 */
     xTaskCreate(push_task, "push", 4096, NULL, 3, NULL);
     xTaskCreate(cli_task, "cli", 4096, NULL, 4, NULL);
     xTaskCreate(btn_task, "btn", 3072, NULL, 3, NULL);
@@ -1905,6 +2000,26 @@ void app_main(void)
     for (;;) {
         uint32_t t = now_ms();
         miot_auth_poll(&s_auth, t);
+
+        /* ★BOOT = 物理开关：翻转 2.3，灯立刻跟着变；连着手机就回推一帧
+         * properties_changed（App 页面不用等下一次轮询）。
+         * 没连接时只改本地 —— 米家那边看不到，因为本设备没有网关回传通道。 */
+        if (s_nl_sw_req) {
+            s_nl_sw_req = 0;
+            uint8_t on = prop_u8(2, 3, 0) ? 0 : 1;
+            uint8_t br = prop_u8(2, 1, 50);
+            prop_u8_set(2, 3, on);
+            led_sync();
+            ESP_LOGW(TAG, "SW %s  (2.3=%u, 亮度 %u%%)", on ? "ON" : "OFF", (unsigned)on, (unsigned)br);
+            if (s_auth.logged_in && gatt_miot_is_connected()) {
+                push_table();
+                ESP_LOGW(TAG, "   已回推 properties_changed -> App 页面同步");
+            } else {
+                ESP_LOGW(TAG, "   未连接手机：状态只留本地，App 连上后读属性可见");
+            }
+        }
+
+        led_sync();   /* App 侧改 2.1 / 2.3 时也在这一行跟上 */
 
         /* 夜灯2 传感器上报：CLI 触发一次「有人移动」，1.5s 后自动回落。
          * 必须当场把帧刷出去 —— 网关按边沿判定事件，等下一轮心跳（100~300ms 也可能

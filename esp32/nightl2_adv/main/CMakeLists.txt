@@ -14,7 +14,7 @@ idf_component_register(
          "${SDK_DIR}/src/miot_profiles.c"
          "${SDK_DIR}/port/esp32/miot_port_esp32.c"
     INCLUDE_DIRS "." "${SDK_DIR}/include"
-    PRIV_REQUIRES bt nvs_flash mbedtls esp_driver_gpio
+    PRIV_REQUIRES bt nvs_flash mbedtls esp_driver_gpio esp_driver_ledc
 )
 
 # IDF v6.0 (mbedTLS 4.x)：CCM/ECP/ECDH 的 legacy 函数声明被包在
