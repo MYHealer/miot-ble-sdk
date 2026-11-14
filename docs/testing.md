@@ -299,6 +299,7 @@ weigh step 1/7 rc=16 … 7/7 rc=24 → weigh-in done
 | 16 | 人体传感器 2（小白版独立工程） | ✅ 通过 | 2026-11-14 | RTCGQ02LM（PID **0x0A8D**），`esp32/motion_adv` 430 行。派生 MAC `10:00:3B:CE:5E:03` + NVS `motion`；与 door_adv 同骨架，仅 PID/对象/动作不同。米家添加一次过（`cmd=A2 → REGISTER COMPLETE 0x11`，did `00 62 6C 74`，bound=1）→ 短按 BOOT 连发 3 帧 `0x000F=1`（有人）→ 60 秒无动作自动回落 `0x000F=0`（无人）→ 设备页「有人移动」与自动化触发均正常。遗留：光照为常量、无 `0x1001` 按键对象 |
 | 17 | 水浸传感器（小白版独立工程） | ✅ 通过 | 2026-11-14 | SJWS01LM（PID **0x0863**），`esp32/leak_adv` 430 行。派生 MAC `10:00:3B:CE:5F:03` + NVS `leak`；米家添加一次过（`CMD_REGISTER(0xA2)` → `REGISTER COMPLETE 0x11`，did `00 62 6C 74`，bound=1）→ 短按 BOOT 连发 3 帧 `0x1014=1`（漏水），设备页转「漏水」并进「感应记录」。与 `multi_dev` 档案相比：独立 NVS/MAC、事件连发 3 帧 + 2 分钟唤醒窗口（老档案只翻转广播值）。未单独复测「解除」方向、电量显示 `--` 属已知心跳现象 |
 | 19 | 夜灯2（小白版独立工程） | ⏳ 编译通过·待复测 | 2026-11-14 | MUE4094RT（PID **0x03DD**），`esp32/nightl2_adv` 2143 行 + GATT 1917 行。全仓库唯一详情页走 **NUS 文本协议**：legacy token 绑定 → ag2（001A/001B）建链 → device info → `6E400001/2/3` 收发 `get_prop` / `set_bright` / `apply_fixed_scene`。单型号、不编 Mesh、NVS `nightl2`、MAC `10:00:3B:CE:70:03`、默认强制待绑定广播（`advu 0` 可切）。**未烧真机**，验收清单见 §19 |
+| 20 | 全量构建回归自检（12 工程） | ✅ 通过 | 2026-11-14 | `tools/build_all.sh` 一轮全编：12/12 通过、零告警，总耗时约 15 分钟。起因是体脂秤改 `scale_s400_store_offline` 签名后 `multi_dev` 静默编译不过（已在 `dd810fb` 修复）。设备验收只证明「这台能用」，这一节证明「别的没坏」。`plant_monitor_*` 无 CMakeLists，不在范围 |
 
 ### 15. 门窗传感器 2（`esp32/door_adv`）
 
@@ -359,3 +360,44 @@ weigh step 1/7 rc=16 … 7/7 rc=24 → weigh-in done
 
 > 判据：19.4 的 JSON 回报是「插件认账」的唯一证据——只发不收（或字段名写错）时，
 > 页面会先乐观更新、重进就回落。页面偶发「连接超时」是已知现象，退回再进一次。
+
+---
+
+## E. 构建回归自检（不是设备验收，是"别把别人弄坏"）
+
+### 20. 全量编译：12 个工程一轮过（2026-11-14）
+
+**为什么单独列一节**：SDK 对外函数签名一改（`scale_s400_store_offline` 加 `ts`），
+没被编译到的工程会静默变成"编译不过"。当天就是这样：体脂秤 15:15 改签名，
+`multi_dev` 两处旧调用失效，直到晚上抽夜灯工程才发现。设备验收只能证明"这台能用"，
+证明不了"别的没坏"——所以要有这道门禁。
+
+跑法（仓库根目录，全部在 `espressif/idf:v6.0` 容器内，不动本机环境）：
+
+```bash
+bash tools/build_all.sh              # 全量，末尾打 PASS/FAIL 汇总
+bash tools/build_all.sh scale_adv    # 只编一个
+```
+
+`multi_dev` 自动走它自己的 `build_mesh.sh`（要打 6 个 NimBLE 移植补丁），其余走 `idf.py build`。
+
+| 工程 | 结果 | 耗时 | 固件 | 告警 |
+|---|---|---|---|---|
+| `btn1_adv` | ✅ | 77s | 579,904 B | 0 |
+| `btn2_adv` | ✅ | 75s | 580,496 B | 0 |
+| `door3_adv` | ✅ | 68s | 580,768 B | 0 |
+| `door_adv` | ✅ | 70s | 580,256 B | 0 |
+| `leak_adv` | ✅ | 71s | 580,240 B | 0 |
+| `motion_adv` | ✅ | 75s | 580,608 B | 0 |
+| `multi_dev` | ✅ | 127s | 725,120 B | 0 |
+| `nightl2_adv` | ✅ | 77s | 623,280 B | 0 |
+| `scale_adv` | ✅ | 72s | 588,512 B | 0 |
+| `t3pro_adv` | ✅ | 71s | 581,104 B | 0 |
+| `thermo_gatt` | ✅ | 75s | 580,496 B | 0 |
+| `wx08zm_gatt` | ✅ | 74s | 581,264 B | 0 |
+
+12/12 通过，零告警。`plant_monitor_adv` / `plant_monitor_gatt` 没有 `CMakeLists.txt`（实验残留），
+不在门禁范围。
+
+> 判据：只看末尾 `PASS (12)` 与 `FAIL` 行是否为空。固件大小只用来发现"编出来的其实是旧的"——
+> 如果某工程大小和前一轮完全一致、耗时却只有 8 秒，那是增量空转，删 `build/` 重编才算数。

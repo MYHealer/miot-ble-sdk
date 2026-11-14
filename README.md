@@ -253,7 +253,8 @@ void app_main(void) {
 - [docs/clean-app-matrix.md](docs/clean-app-matrix.md) —— 官方原版 App 可绑定矩阵（标准认证 vs PSK）
 - [docs/psk-auth.md](docs/psk-auth.md) —— legacy PSK（帧格式 / 已实现的状态机 / 实测开关）
 - [docs/protocol.md](docs/protocol.md) —— 协议文档（认证流程 / ag2 / spec v2 帧格式 / S400 数据面）
-- [docs/testing.md](docs/testing.md) —— 逐设备实机验证清单
+- [docs/testing.md](docs/testing.md) —— 逐设备实机验证清单（§20 是全量构建回归门禁）
+- [tools/build_all.sh](tools/build_all.sh) —— **改完 SDK 先跑这个**：一轮编译 `esp32/` 下全部 12 个工程，末尾打 `PASS (12)` / `FAIL` 汇总，专治「改了共享函数签名、某个工程静默编译不过」
 - [.github/ISSUE_TEMPLATE/](.github/ISSUE_TEMPLATE/) —— 实测记录模板（PSK / 标准认证），串口日志必填
 - [test/test_spec.c](test/test_spec.c) —— 黄金样本即实测帧
 - [test/test_psk.c](test/test_psk.c) —— PSK 状态机单测（帧序列 / 模式分流 / KDF 标签）
