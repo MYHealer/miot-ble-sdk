@@ -1475,7 +1475,7 @@ static void cli_task(void *arg)
                 while (*a2 == ' ') a2++;
                 if (*a2) imp = (uint32_t)strtoul(a2, NULL, 10);
             }
-            scale_s400_store_offline(g, imp);
+            scale_s400_store_offline(g, imp, scale_now());
             s_solicit_until = now_ms() + 10u * 60u * 1000u;
             adv_refresh();
             ESP_LOGW(TAG, "offline weigh-in %u.%03ukg imp=%u -> solicited adv 10min",
@@ -2175,7 +2175,7 @@ void app_main(void)
                 s_widx = (s_widx + 1) % (int)(sizeof(k_wcycle) / sizeof(k_wcycle[0]));
                 s_wts  = scale_now();
                 s_last_weigh = t;
-                scale_s400_store_offline(s_ww, s_wimp);
+                scale_s400_store_offline(s_ww, s_wimp, s_wts);
                 s_solicit_until = t + 10u * 60u * 1000u;
                 adv_refresh();
                 ESP_LOGW(TAG, "offline weigh-in %u.%03ukg imp=%u (no session) -> "
