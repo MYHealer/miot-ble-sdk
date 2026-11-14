@@ -129,3 +129,31 @@
 
 先看 [clean-app-matrix.md](clean-app-matrix.md)。有些型号走 legacy PSK 认证，
 本 SDK 未实现 PSK，**官方原版 App 下绑不上**——这不是 bug，也不是靠调参能解决的。
+
+---
+
+## Q10. 重烧固件后「添加成功、详情页一直连接超时」
+
+**先判断在哪一段**，三段的处置完全不同（串口 `STAT` 行是关键证据）：
+
+| 现象 | 串口证据 | 根因 | 处置 |
+|---|---|---|---|
+| 米家扫不到 / 添加失败 | `bound=1`，mfg 帧 `30 29 dd03 …` | 已绑定态广播，而米家「添加」只认 `0x20` | 设备端串口 `factory` → `bound=0` 再扫 |
+| 已添加，点详情页超时，`conn=0` 持续几分钟 | `STAT bound=1 login=0 conn=0 adv=1` | **Android 缓存了旧 GATT 服务表**；重烧后句柄全变，连接直接 `status 133` | **手机关蓝牙 → 等 5 秒 → 再开**，或重启手机 |
+| 刚添加成功马上点详情页超时 | 45~139s 内零连接 | 正常真空期，App 停在「添加成功」页 | 退出页面等 2 分钟再进（`nightl2-ag2-handoff.md` §11.3） |
+
+**设备侧自查**（排除固件问题最快的办法）：PC 上 `bleak` 直连目标 MAC，
+能列出 `0xFE95` 全套特征、读到 `0x0004` 返回版本字符串，就说明固件与 GATT 表没问题，
+锅在手机侧 —— 不要再去改固件参数。
+
+```python
+import asyncio
+from bleak import BleakClient
+async def main():
+    async with BleakClient("10:00:3B:CE:70:03") as c:
+        print(await c.read_gatt_char("00000004-0000-1000-8000-00805f9b34fb"))
+asyncio.run(main())
+```
+
+> 另一个容易自己坑自己的点：ESP32-C3 走 USB-Serial-JTAG，**每次打开串口都会复位芯片**。
+> 一边抓日志一边让手机连，连接会被复位打断，看起来就像「又超时了」。
