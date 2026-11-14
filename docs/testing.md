@@ -298,6 +298,7 @@ weigh step 1/7 rc=16 … 7/7 rc=24 → weigh-in done
 | 15 | 门窗传感器 2（小白版独立工程） | ✅ 通过 | 2026-11-14 | MCCGQ02HL（PID **0x098B**），`esp32/door_adv` 420 行。派生 MAC `10:00:3B:CE:5D:03` + NVS `door`；广播 `70 2a | 8b 09 | 06 | 03 5d ce 3b 00 10 | 11 | 11 10 01 00`（FC hi=0x2A → v2 + 标准认证 + solicited）→ 米家添加一次过（`STD LOGIN COMPLETE (0x21 on 0x0010)`）→ 会话就绪。短按 BOOT 开/关门各连发 3 帧：`0x1019` = 0（开）/1（关）+ `0x1018` 光照 + `0x100A` 电量，App 设备页随之变化。长按 5s 恢复出厂 |
 | 16 | 人体传感器 2（小白版独立工程） | ✅ 通过 | 2026-11-14 | RTCGQ02LM（PID **0x0A8D**），`esp32/motion_adv` 430 行。派生 MAC `10:00:3B:CE:5E:03` + NVS `motion`；与 door_adv 同骨架，仅 PID/对象/动作不同。米家添加一次过（`cmd=A2 → REGISTER COMPLETE 0x11`，did `00 62 6C 74`，bound=1）→ 短按 BOOT 连发 3 帧 `0x000F=1`（有人）→ 60 秒无动作自动回落 `0x000F=0`（无人）→ 设备页「有人移动」与自动化触发均正常。遗留：光照为常量、无 `0x1001` 按键对象 |
 | 17 | 水浸传感器（小白版独立工程） | ✅ 通过 | 2026-11-14 | SJWS01LM（PID **0x0863**），`esp32/leak_adv` 430 行。派生 MAC `10:00:3B:CE:5F:03` + NVS `leak`；米家添加一次过（`CMD_REGISTER(0xA2)` → `REGISTER COMPLETE 0x11`，did `00 62 6C 74`，bound=1）→ 短按 BOOT 连发 3 帧 `0x1014=1`（漏水），设备页转「漏水」并进「感应记录」。与 `multi_dev` 档案相比：独立 NVS/MAC、事件连发 3 帧 + 2 分钟唤醒窗口（老档案只翻转广播值）。未单独复测「解除」方向、电量显示 `--` 属已知心跳现象 |
+| 19 | 夜灯2（小白版独立工程） | ⏳ 编译通过·待复测 | 2026-11-14 | MUE4094RT（PID **0x03DD**），`esp32/nightl2_adv` 2143 行 + GATT 1917 行。全仓库唯一详情页走 **NUS 文本协议**：legacy token 绑定 → ag2（001A/001B）建链 → device info → `6E400001/2/3` 收发 `get_prop` / `set_bright` / `apply_fixed_scene`。单型号、不编 Mesh、NVS `nightl2`、MAC `10:00:3B:CE:70:03`、默认强制待绑定广播（`advu 0` 可切）。**未烧真机**，验收清单见 §19 |
 
 ### 15. 门窗传感器 2（`esp32/door_adv`）
 
@@ -337,3 +338,24 @@ weigh step 1/7 rc=16 … 7/7 rc=24 → weigh-in done
 > 广播：`70 2a | 63 08 | cnt | 03 5f ce 3b 00 10 | 11 | 11 10 01 00`（FC=0x2A → v2 + 标准认证 + solicited）。
 > 实测只按了一次（漏水方向，`0x1014=1`）已上云；「解除」方向同一帧路径，未单独复测。
 > 电量走心跳帧，网关不一定即时上报，设备页显示 `--` 属已知现象（旧 `multi_dev` 档案同样如此）。
+
+### 19. 夜灯2（`esp32/nightl2_adv`）—— 编译通过，待复测
+
+`MUE4094RT / PID 0x03DD`。链路（legacy token 绑定 → ag2 建链 → device info → NUS 文本）
+已在 `esp32/multi_dev` 上实机验证过，本工程是把同一套代码抽成单型号：
+不编 Mesh、NVS 独立 `nightl2`、MAC `10:00:3B:CE:70:03`、默认强制待绑定广播。
+`idf.py build` 通过（623,280 字节），**尚未烧真机**。
+
+| # | 操作 | 预期 |
+|---|---|---|
+| 19.1 | `idf.py erase-flash flash` | `===== 夜灯2 小白版（MUE4094RT / 0x03DD）=====`；`MAC for [0] 夜灯2 … :70:03`；`bound=0` |
+| 19.2 | 米家 + → 添加设备 | 出现 `MUE4094RT`；串口 `AUTH_INIT` → `token` → `BOND` → `DeviceID` → `GETRAND` → `LOGIN` |
+| 19.3 | 进详情页 | `ag2 mng` → `mng_ack` ×2 → 测试包 → `channel READY` → `device info` 分帧送达 |
+| 19.4 | 拖亮度 58 | `NUS rx: set_bright 58` → `NL tx: {"flag":"set_bright","result":{"bright":58}}`；重进页面仍 58 |
+| 19.5 | 开关灯 / 改延时 | 对应 `set_power` / `set_dur`；页面状态跟随 |
+| 19.6 | 点固定场景 2 | `apply_fixed_scene 2`，`nlstat` 里场景号变 2 |
+| 19.7 | 删设备 → 重新添加 | **先串口 `factory`**；否则广播 BondAbility=0x29，App 扫描列表直接过滤 |
+| 19.8 | 长按/短按 BOOT | 短按 = 配对唤醒快广播 30s；长按 5s = 恢复出厂 |
+
+> 判据：19.4 的 JSON 回报是「插件认账」的唯一证据——只发不收（或字段名写错）时，
+> 页面会先乐观更新、重进就回落。页面偶发「连接超时」是已知现象，退回再进一次。
