@@ -136,6 +136,8 @@ typedef struct miot_auth {
     int      chan_ready;
     int      info_sent;                /* 本次连接的 device info 已交出去（防重发） */
     uint32_t info_at_ms;               /* device info 的发送时刻（1=pending 未排期） */
+    int      reg_resend_tries;         /* REGISTER 阶段 device info 已重发次数 */
+    uint32_t reg_resend_at_ms;         /* 下一次重发时刻；1 = 待排期（poll 里改成 now+100） */
 
     /* 内部：ag2 分片发送队列（START → 等 App ACK(1) → 逐帧发 → 每帧等 ACK(0)）。
      * 一次性把 START 和数据帧全推出去，App 还没就绪，数据帧等于白发。 */

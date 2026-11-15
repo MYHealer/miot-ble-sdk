@@ -163,6 +163,11 @@ static void register_start(miot_auth_t *a)
     a->state = MIOT_AUTH_ST_REG_PUBKEY;
     a->ecdh_ok = 0;
     send_device_info(a);
+    /* ★-55 兜底：App 收到 device info 才会回 0x15（要公钥）。这条 notify 一旦
+     *   在手机侧没落地（首次连接时 ATT 还没完全就绪），App 干等 16s 就报
+     *   「notify 超时」= -55。这里排一次重发窗口，poll 里按状态推进。 */
+    a->reg_resend_tries = 1;
+    a->reg_resend_at_ms = 1;            /* 1 = 待排期（poll 转成 now+150） */
 }
 
 /* 注册完成（收到 App 公钥）：ECDH → HKDF 派生身份 → 回公钥+devRandom+devConfirm */
@@ -764,7 +769,8 @@ void miot_auth_on_0010(miot_auth_t *a, const uint8_t *d, size_t len)
          * App 写 a2 后一定等 device info，把它当 login 只会 16s 超时报 -55 */
         alog(a, "CMD_REGISTER(0x%02X) -> register flow", d[0]);
         if (a->state == MIOT_AUTH_ST_IDLE) register_start(a);
-        else { a->state = MIOT_AUTH_ST_REG_PUBKEY; send_device_info(a); }
+        else { a->state = MIOT_AUTH_ST_REG_PUBKEY; send_device_info(a);
+               a->reg_resend_tries = 1; a->reg_resend_at_ms = 1; }
         return;
     }
     if (len == 4 && d[0] == 0x13 && d[1] == 0 && d[2] == 0 && d[3] == 0) {
@@ -792,6 +798,25 @@ void miot_auth_poll(miot_auth_t *a, uint32_t now_ms)
             a->info_at_ms = 0;
             alog(a, "device info fired (fallback 250ms, no echo)");
             send_device_info(a);
+        }
+    }
+
+    /* REGISTER 阶段 device info 重发：150ms 后仍停在「等 App 公钥」说明上一
+     * 条 notify 手机侧没收到（-55 现场：设备侧 rc=0、App 侧零反应）。重发最多
+     * 3 次，App 对重复的 device info 是幂等解析，不会误判。 */
+    if (a->state == MIOT_AUTH_ST_REG_PUBKEY && a->reg_resend_at_ms) {
+        if (a->reg_resend_at_ms == 1) {
+            a->reg_resend_at_ms = now_ms + 150;
+        } else if ((int32_t)(now_ms - a->reg_resend_at_ms) >= 0) {
+            if (a->reg_resend_tries < 4) {
+                a->reg_resend_tries++;
+                a->reg_resend_at_ms = now_ms + 400;
+                alog(a, "device info RESEND #%d (no app pubkey yet)",
+                     a->reg_resend_tries - 1);
+                send_device_info(a);
+            } else {
+                a->reg_resend_at_ms = 0;
+            }
         }
     }
 
