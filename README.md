@@ -18,7 +18,7 @@
 ┌──────────────────────────────────────────────────────────┐
 │  你的产品逻辑（体重计 / 温湿度计 / 灯 / 任意 MIoT 设备）      │
 ├──────────────────────────────────────────────────────────┤
-│  miot_profiles 已验证设备档案（13 台设备，见下方设备清单）     │
+│  miot_profiles 已验证设备档案（14 台设备，见下方设备清单）     │
 │  miot_beacon   MiBeacon v5 加密广播帧（不建连接的传感器）      │
 ├──────────────────────────────────────────────────────────┤
 │  miot_device   组合层：加密通道+分派+属性表+主动上报           │
@@ -106,6 +106,7 @@ App 建立会话后 `login=1`。三态的含义见 [docs/troubleshooting.md](doc
 | [`esp32/pir2s_adv`](esp32/pir2s_adv) | 人体传感器 2S（xiaomi.motion.pir1 / 0x3531） | 620 行 | ✅ 2026-11-15 实机：绑定 + 移动/光照上云（短按 BOOT = `0x4A08` 移动事件带光照、双击 = `0x4805` 光照三档、无人 60s 自动回落推 `0x4818`）。**MiBeacon2 spec 对象号公式**（`eid=0x4000\|事件位\|siid<<10\|(iid-1000)`）首秀；**两条硬教训**：① pir1 是「设备确认配对」类产品，直连后广播必须保持请求配对形态，连接即停播必 `-28`（troubleshooting Q12）；② 电量公式值 `0x4C03` 网关不映射，App 恒「--」，用标准对象 `0x100A`。派生 MAC `…:73:03` + NVS `pir2s`。**小白版** |
 | [`esp32/door3_adv`](esp32/door3_adv) | 门窗传感器 3（xiaomi.magnet.03 / 0x8C05） | 620 行 | ✅ 2026-11-17 实机：绑定 3/3 完成（did `00 62 6C 74`，重刷仍「已绑定」）+ 开合/电量上云。**新式 spec 对象号按公式算**（不是照抄门窗2 的 0x1019）：`eid=0x4000\|(siid<<10)\|(piid-1000)` → 开合 2.1012 = **0x480C** / 电量 3.1107 = **0x4C6B**。**两个坑**：① 对象号：发 0x1019 云端 `2:1012` 恒 null；② **载荷类型**：电量是**枚举**（0=Fully/1=Low）不是百分比，发 95 被网关整帧丢弃→云端恒 null，改发 0/1 立即通（类型错比对象号错更隐蔽）。派生 MAC `…:6F:05` + NVS `door3`。串口 `open/close/toggle/obj/batt/bval`。**小白版** |
 | [`esp32/occ_adv`](esp32/occ_adv) | 人体存在传感器（xiaomi.sensor_occupy.03 / 0x4683） | 620 行 | ✅ 2026-11-15 实机：绑定 + 存在状态/光照上云（短按 BOOT = `0x484E` 有人/无人切换、双击 = `0x4805` 光照三档、有人 120s 无动作自动回无人）。对象 0x484E 存在状态 / 0x4805 光照 / 0x4852·0x4851 有人无人时长 / 0x100A 电量。派生 MAC `…:74:03` + NVS `occ`。**小白版** |
+| [`esp32/gas_adv`](esp32/gas_adv) | 燃气传感器（mirsz.sensor_gas.ga500 / 0x392D） | 611 行 | ✅ 2026-11-17 实机：绑定 3/3 + 场景页自动出「燃气超标提醒」（云端按 spec 正确识别铁证）+ 浓度上云。**新式 spec 对象号公式** `eid=0x4000\|(siid<<10)\|(piid-1000)` → gas-concentration 2.1011 = **0x480B**（4B float）。串口 `gas N` / `toggle` 双向验证 `2:1011=35`。**坑**：设值后须保持串口连接（断串口复位值回默认）。派生 MAC `…:76:05` + NVS `gas`。SDK 首个燃气品类。**小白版** |
 | [`esp32/leak_adv`](esp32/leak_adv) | 水浸传感器（0x0863） | 430 行 | ✅ 2026-11-14 实机：米家添加一次过（`REGISTER COMPLETE 0x11`）→ 短按 BOOT 连发 3 帧 `0x1014=1`（漏水），设备页转「漏水」并进感应记录。**小白版**，派生 MAC `…:5F:03` |
 | [`esp32/nightl2_adv`](esp32/nightl2_adv) | 夜灯2（MUE4094RT / 0x03DD） | 2143 行 (+1917 行 GATT) | ✅ 2026-11-14 实机：烧录通过 → 米家添加成功（`bound=1`，did 入库）→ 详情页连通轮询。**注意**：重烧固件后手机必须关/开蓝牙，否则 Android 命中旧 GATT 缓存必然 `status 133` 超时。全仓库唯一详情页走 **NUS 文本协议** 的设备——legacy token 绑定 + ag2 建链（001A/001B）+ `6E400001/2/3` 收发 `get_prop` / `set_bright` / `apply_fixed_scene`。单型号、不编 Mesh、NVS `nightl2`、MAC `…:70:03`、默认待绑定广播（`advu 0` 可切）。链路来自 `multi_dev` 实机验证；已知：详情页偶发超时 / 删设备重加先 `factory` / 无「如果」触发条件 |
 | [`esp32/bulb_gatt`](esp32/bulb_gatt) | LED 灯泡 蓝牙 Mesh 版（MJDP003） | 734 行 (+245 行 GATT) | ❌ **2026-11-14 编译 + 烧录 + 广播实测通过，但米家绑定被拒 `-27`**：spec 直连、以及挂 NimBLE Mesh 栈（0x1827/2adb/2adc 就位）两种形态都试过，App 都在 400ms 内「读完服务表、零写入即断开」→ 拒绝点在 PID 类型层。`0x06EB` 是 MJDP09YL 的代号，只能等 MJDP003 真机扫一帧取真 PID（串口 `pid 0xXXXX` 写入，不用重编） |
@@ -170,7 +171,7 @@ void app_main(void) {
 }
 ```
 
-## 设备清单（13 台，米家 Android App 实测状态）
+## 设备清单（14 台，米家 Android App 实测状态）
 
 > **先看这一条**：各档案在**官方原版 App（无任何模块、未 root）**下能否添加，
 > 见 [docs/clean-app-matrix.md](docs/clean-app-matrix.md)。
@@ -260,7 +261,7 @@ void app_main(void) {
 - [docs/psk-auth.md](docs/psk-auth.md) —— legacy PSK（帧格式 / 已实现的状态机 / 实测开关）
 - [docs/protocol.md](docs/protocol.md) —— 协议文档（认证流程 / ag2 / spec v2 帧格式 / S400 数据面）
 - [docs/testing.md](docs/testing.md) —— 逐设备实机验证清单（§20 是全量构建回归门禁）
-- [tools/build_all.sh](tools/build_all.sh) —— **改完 SDK 先跑这个**：一轮编译 `esp32/` 下全部 13 个工程，末尾打 `PASS (13)` / `FAIL` 汇总，专治「改了共享函数签名、某个工程静默编译不过」
+- [tools/build_all.sh](tools/build_all.sh) —— **改完 SDK 先跑这个**：一轮编译 `esp32/` 下全部 14 个工程，末尾打 `PASS (14)` / `FAIL` 汇总，专治「改了共享函数签名、某个工程静默编译不过」
 - [.github/ISSUE_TEMPLATE/](.github/ISSUE_TEMPLATE/) —— 实测记录模板（PSK / 标准认证），串口日志必填
 - [test/test_spec.c](test/test_spec.c) —— 黄金样本即实测帧
 - [test/test_psk.c](test/test_psk.c) —— PSK 状态机单测（帧序列 / 模式分流 / KDF 标签）
