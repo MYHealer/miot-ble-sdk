@@ -309,6 +309,7 @@ weigh step 1/7 rc=16 … 7/7 rc=24 → weigh-in done
 | 28 | 烟雾传感器（小白版独立工程） | ✅ 通过（绑定 + 火警上云） | 2026-11-17 | mirsz.sensor_smoke.s500（PID **0x392E** = 国区 pdid 14638），`esp32/smoke_adv`。派生 MAC `10:00:3B:CE:77:05` + NVS `smoke`；米家添加 3/3 完成（did `00 62 6C 74`），设备页「烟雾传感器 / 设备状态 正常」+ 历史「烟雾报警解除」（云端按 spec 正确识别）。**新式 spec 对象号按公式**：`eid = 0x4000\|(siid<<10)\|(piid-1000)` → fire-alarm 2.1043 = **0x482B**（1B **bool** 0=正常 1=火警）。串口 `alarm N` / `toggle` 双向验证：默认 `2:1043=false` → `alarm 1` → `2:1043=true`（code=0）。**坑1**：设值后须保持串口连接（断串口 DTR/RTS 复位→值回默认）；**坑2**：多字母命令 `alarm` 的 `strncmp` 长度与指针偏移要同步（写成 3 会把 `alarm 1` 截成 `rm 1`→0）。SDK 安消防新品类。**小白版** |
 | 29 | 米家无线智能宠物饮水机（小白版独立工程） | ✅ 通过（绑定 + 三属性上云双向） | 2026-11-18 | xiaomi.pet_waterer.002（PID **0x399A** = 国区 pdid 14746），`esp32/petwater_adv`。派生 MAC `10:00:3B:CE:78:05` + NVS `petwater`；米家扫描列表出现「米家无线智能宠物饮水机」→ 添加 3/3 完成（did `blt.3.1qtgp3bm84o04`），设备页全功能 UI（今日出水次数/滤芯滤棉/电量/感应模式）。**新式 spec 三槽轮播**：缺水 2.1067=`0x4843`(bool) / 滤芯 3.1076=`0x4C4C`(uint8) / 电量 5.1003=`0x5403`(uint8)，公式 `eid=0x4000|(siid<<10)|(piid-1000)`。云端双向：`alarm 1`→`2:1067=true`、`filt 50`→`3:1076=50`、`batt 35`→`5:1003=35`（全 code=0）。**坑1**：三对象同帧超 26B → `rc=-2`，必须一帧一对象轮播；**坑2**：验证时 App 设备页不能开着（占 BLE 连接→网关收不到广播帧）。SDK 首个宠物品类。**小白版** |
 | 30 | 米家夜灯2 蓝牙版（小白版独立工程） | ✅ 通过（绑定 + 详情页渲染 + 无人时长上云双向） | 2026-11-19 | yeelink.light.nl1（PID **0x07F6** = pdid 2038），`esp32/nl1_adv`。派生 MAC `10:00:3B:CE:7B:05` + NVS `nl1`，广播名 `NL1`。米家扫描列表出现「米家夜灯2 蓝牙版」→ 添加 4/4 完成（did `blt.3.1qtq2jessck00`），设备页完整渲染（夜灯设置/智能场景/传感器日志）。**标准夜灯 spec**（非私有）：2.1 no-motion-duration / 3.1 battery / 4.1 illumination，全 read/notify。广播对象用标准 `0x1017`（no-motion，4B 秒数，非新式 eid 公式），网关按 spec 枚举归档：串口 `motion 123` → 云端 `2:1=2`（2 分钟档）、`motion 600` → `2:1=10`（10 分钟档），全 code=0。**关键对照**：同族 `careco.nlight.o654`（0x6266，补光灯）用私有 `urn:careco-spec` + access=[]，插件不认标准帧 → 1.3s 必断 0x213；本型号是标准 spec，display=232 同样能过 —— 证明 232 不是失败根因，私有 spec 才是。SDK 首个标准夜灯品类。 |
+| 31 | 领普压力有无传感器（小白版独立工程） | ✅ 通过（绑定 + 有无压力/电量上云双向） | 2026-11-19 | linp.senpres.ps1bb（PID **0x3F4C** = pdid 16204），`esp32/senpres_adv`。派生 MAC `10:00:3B:CE:7F:05` + NVS `senpres`，广播名 `SENPRES1`；米家扫描列表出现「领普压力有无传感器」→ 添加 3/3 完成（did `blt.3.1qtto9isg4402`），设备页「无压力/有压力」+「蓝牙网关已连接」。**标准 pressure-sensor 新式 spec**：有无压力 2.1060=`0x483C`(bool)、电量 3.1003=`0x4C03`(uint8 百分比)，公式 `eid=0x4000\|(siid<<10)\|(piid-1000)`。云端双向：`press 1`→`2:1060=true`、`press 0`→`false`、`batt 77`→`3:1003=77`、`batt 33`→`33`（全 code=0）。**坑**：事件帧必须带刚触发的对象（`s_ev_obj`），否则 `batt` 改完仍发压力槽；验证时先关设备页（占 BLE 网关收不到广播）。SDK 首个 pressure-sensor 品类。**小白版** |
 
 ### 15. 门窗传感器 2（`esp32/door_adv`）
 
@@ -824,3 +825,56 @@ MAC `10:00:3B:CE:78:05`，NVS `petwater`，广播名 `PETWATER`。**SDK 首个�
 | 30.4 | `motion 600` + 关 App 页 | 云端 `2:1=10`（code=0） |
 | 30.5 | 长按 BOOT 5s | 恢复出厂，重启后 `bound=0` |
 
+
+## 31. 领普压力有无传感器（`esp32/senpres_adv`）—— 2026-11-19 实机通过
+
+**结论：✅ 绑定成功、设备页渲染、有无压力/电量上云双向验证通过。**
+工程 `esp32/senpres_adv`（639 行，0x8da40 B，零告警），MAC `10:00:3B:CE:7F:05`，
+NVS `senpres`，广播名 `SENPRES1`。SDK 首个 **pressure-sensor** 品类档案。
+
+### 31.1 为什么选这个型号
+
+官方 BLE `resolve_type=3` 列表里，**vibration / weather / illumin / co2 / noise / soil
+新品类命中 = 0**；真正未做过的标准 spec 直连设备只剩 `0x3F4C linp.senpres.ps1bb`
+（压力有无，`bt_match=1`、`mesh_gateway=0`）。spec 公开、属性 read/notify、无私有
+`access=[]` 墙 —— 与 smoke/gas 同路径，最适合打新品类。
+
+### 31.2 对象号（eid 公式）
+
+| 属性 | siid.piid | 类型 | 对象号 | 载荷 |
+|---|---|---|---|---|
+| Pressure Present State | 2.1060 | bool | **0x483C** | 1B 0=无 1=有 |
+| Battery Level | 3.1003 | uint8 0-100 | **0x4C03** | 1B 百分比 |
+
+`2.1060 → 0x4000|(2<<10)|60 = 0x483C`；`3.1003 → 0x4000|(3<<10)|3 = 0x4C03`。
+电量是百分比（与门3 `0x4C6B` 枚举不同）。2.1061/1062 duration 未纳入广播
+（u32 帧更大，且主状态已够自动化用）。
+
+### 31.3 上云双向验证
+
+did `blt.3.1qtto9isg4402`：
+
+| 串口命令 | 云端 prop | 结果 |
+|---|---|---|
+| `press 1` | `2:1060` | **true** code=0 |
+| `press 0` | `2:1060` | **false** code=0 |
+| `batt 77` | `3:1003` | **77** code=0 |
+| `batt 33` | `3:1003` | **33** code=0 |
+
+**坑1（已修）**：事件帧若只按空闲 `s_idx` 轮播槽发送，`batt` 命令发出后仍可能打
+压力槽 —— 电量要等空闲轮播碰巧命中才上云。对齐 petwater 用 `s_ev_obj` 标记
+「刚触发的对象」，事件插队时强制带该对象。
+
+**坑2**：验证时米家设备页开着会占 BLE 连接 → 网关收不到广播帧（petwater §29 同坑）。
+先 BACK 退出设备页再串口发命令。
+
+### 31.4 验收清单
+
+| # | 操作 | 预期 |
+|---|---|---|
+| 31.1 | `idf.py erase-flash flash` | 横幅 `SENPRES1 / 0x3F4C`，`未绑定` |
+| 31.2 | 米家 + → **添加设备** | 扫描出现「领普压力有无传感器」；添加 3/3 |
+| 31.3 | 设备页 | 「无压力」+「蓝牙网关已连接」 |
+| 31.4 | `press 1` / `press 0` + 关页 | 云端 `2:1060` true/false（code=0） |
+| 31.5 | `batt 77` / `batt 33` | 云端 `3:1003` 77/33（code=0） |
+| 31.6 | 长按 BOOT 5s | 恢复出厂，重启后 `bound=0` |
