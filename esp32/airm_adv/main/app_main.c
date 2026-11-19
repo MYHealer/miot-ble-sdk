@@ -70,6 +70,12 @@ static const char *TAG = "AIRM";
 #define ADV_PERIOD_MS   4000
 #define EVENT_GAP_MS    400
 #define EVENT_REPEAT    3
+/* 气体属性（HCHO/TVOC）网关落库延迟约 2 分钟：事件帧拉长到 ~72s，
+ * 每 400ms 一帧连续补发，配合云端轮询才能稳定写入（2026-11-19 实测 129s）。 */
+#define EVENT_REPEAT_GAS 180
+/* 气体属性：单次连发不够，需跨 ~2 分钟多次补发（实测 129s 落库） */
+#define GAS_REFIRE_MAX   5
+#define GAS_REFIRE_MS    45000
 #define WAKE_WINDOW_MS  120000
 #define ADV_CONN_ALWAYS 1
 #define AIRM_SLOTS      6
@@ -98,6 +104,10 @@ static uint8_t  s_ev_obj;
 static uint8_t  s_dirty_siid;
 static uint16_t s_dirty_piid;
 static int      s_ev_left;
+static uint8_t  s_gas_mask;          /* 本轮待发：bit3=TVOC bit5=HCHO */
+static uint8_t  s_gas_want;          /* 用户请求全集（补发时恢复用） */
+static int      s_gas_rounds;
+static uint32_t s_gas_refire_at;
 static uint32_t s_wake_until;
 
 static miot_auth_t   s_auth;
@@ -447,11 +457,30 @@ static void host_task(void *param)
 
 static void fire_slot(uint8_t slot, const char *src)
 {
-    s_ev_obj = slot;
-    s_ev_left = EVENT_REPEAT;
     s_fcnt++;
+    if (slot == 3 || slot == 5) {
+        /* 气体：顺序排队不打断——已在窗内只记 mask，当前槽跑满 180 帧后再发下一槽 */
+        s_gas_mask |= (uint8_t)(1u << slot);
+        s_gas_want |= (uint8_t)(1u << slot);
+        s_gas_rounds = GAS_REFIRE_MAX;
+        s_gas_refire_at = now_ms() + GAS_REFIRE_MS;
+        if (s_ev_left > 0 && (s_ev_obj == 3 || s_ev_obj == 5)) {
+            ESP_LOGW(TAG, ">>> %s触发 %s（排队 mask=0x%02X，当前 %s 继续）",
+                     src, slot_name(slot), s_gas_mask, slot_name(s_ev_obj));
+        } else {
+            s_ev_obj = slot;
+            s_ev_left = EVENT_REPEAT_GAS;
+            /* 本槽占用 mask 位，发完再轮下一槽 */
+            s_gas_mask &= (uint8_t)~(1u << slot);
+            ESP_LOGW(TAG, ">>> %s触发 %s（槽 %u 长连发 want=0x%02X）",
+                     src, slot_name(slot), slot, s_gas_want);
+        }
+    } else {
+        s_ev_obj = slot;
+        s_ev_left = EVENT_REPEAT;
+        ESP_LOGW(TAG, ">>> %s触发 %s（槽 %u）", src, slot_name(slot), slot);
+    }
     s_wake_until = now_ms() + WAKE_WINDOW_MS;
-    ESP_LOGW(TAG, ">>> %s触发 %s（槽 %u）", src, slot_name(slot), slot);
     /* GATT 双通路：连着 App 时立刻 properties_changed（HCHO/TVOC beacon 网关不认） */
     {
         static const uint16_t pids[6] = {1001,1008,1028,1031,1029,1030};
@@ -670,6 +699,44 @@ void app_main(void)
             win_was = win_now;
         }
 
+        /* 气体顺序补发：当前槽跑满后立刻发 mask 里下一槽；本轮发完等 45s 再整轮 */
+        if (s_ev_left == 0 && (s_gas_mask || s_gas_want) && s_gas_rounds > 0) {
+            if (s_gas_mask) {
+                int b = 0;
+                while (b < 8 && !(s_gas_mask & (1u << b))) b++;
+                if (b < 8) {
+                    s_ev_obj = (uint8_t)b;
+                    s_gas_mask &= (uint8_t)~(1u << b);
+                    s_ev_left = EVENT_REPEAT_GAS;
+                    s_fcnt++;
+                    ESP_LOGI(TAG, "气体接续 剩%d轮 mask=0x%02X 槽=%u",
+                             s_gas_rounds, s_gas_mask, s_ev_obj);
+                    build_frame(s_idx);
+                    adv_refresh();
+                }
+            } else if ((int32_t)(now_ms() - s_gas_refire_at) >= 0) {
+                /* 本轮 want 已发完：恢复 mask，进入下一轮 */
+                s_gas_mask = s_gas_want;
+                s_gas_rounds--;
+                s_gas_refire_at = now_ms() + GAS_REFIRE_MS;
+                int b = 0;
+                while (b < 8 && !(s_gas_mask & (1u << b))) b++;
+                if (b < 8 && s_gas_rounds > 0) {
+                    s_ev_obj = (uint8_t)b;
+                    s_gas_mask &= (uint8_t)~(1u << b);
+                    s_ev_left = EVENT_REPEAT_GAS;
+                    s_fcnt++;
+                    ESP_LOGI(TAG, "气体补发 剩%d轮 want=0x%02X 槽=%u",
+                             s_gas_rounds, s_gas_want, s_ev_obj);
+                    build_frame(s_idx);
+                    adv_refresh();
+                } else if (s_gas_rounds <= 0) {
+                    s_gas_mask = 0;
+                    s_gas_want = 0;
+                }
+            }
+        }
+
         if (!gatt_miot_is_connected()) {
             uint32_t period = s_ev_left > 0 ? EVENT_GAP_MS : ADV_PERIOD_MS;
             if (t - last_adv >= period) {
@@ -677,7 +744,8 @@ void app_main(void)
                 if (s_ev_left > 0) {
                     s_ev_left--;
                     s_fcnt++;
-                    ESP_LOGI(TAG, "事件帧 %s（剩 %d 次）", slot_name(s_ev_obj), s_ev_left);
+                    ESP_LOGI(TAG, "事件帧 %s（剩 %d 次）",
+                             slot_name(s_ev_obj), s_ev_left);
                 } else {
                     s_idx = (s_idx + 1) % AIRM_SLOTS;
                     s_fcnt++;
