@@ -79,7 +79,7 @@ static uint16_t s_obj_hum  = 0x4C08;
 static uint16_t s_obj_aqi  = 0x4C1C;
 static uint16_t s_obj_tvoc = 0x4C1F;
 static uint16_t s_obj_co2  = 0x4C1D;
-static uint16_t s_obj_hcho = 0x1010;
+static uint16_t s_obj_hcho = 0x4C1E;
 #define MB_OBJ_TEMP  s_obj_temp
 #define MB_OBJ_HUM   s_obj_hum
 #define MB_OBJ_AQI   s_obj_aqi
