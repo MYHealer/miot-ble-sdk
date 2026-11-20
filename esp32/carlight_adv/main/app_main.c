@@ -81,10 +81,33 @@ static uint32_t v_time      = 0;      /* 9.1 */
 static volatile uint8_t  s_dirty_siid;
 static volatile uint16_t s_dirty_piid;
 
+/* 场景预设（从 careco RN 插件 bundle 实证 lightDefaultSceneData）：
+ *   mode1 明亮 bri100/cct5000 · mode2 月光 bri1/cct5000
+ *   mode3 温馨 bri100/cct2700 · mode4 烛光 bri1/cct2700
+ *   mode0 自定义 → 不改（用户手动调亮度/色温）。
+ * ★真机切场景时硬件会同时把亮度/色温调到该场景值；App 点场景只发 7.4，
+ *   随后重新 GET 7.2/7.3 同步 UI。若设备不联动改，App 读到旧值 → UI 归位
+ *   （用户实测「切场景后 1s 归位」）。 */
+static const struct { uint8_t mode; uint8_t bri; uint16_t cct; } s_scenes[] = {
+    { 1, 100, 5000 }, { 2, 1, 5000 }, { 3, 100, 2700 }, { 4, 1, 2700 },
+};
+static volatile uint8_t s_scene_sync;   /* 收到场景 SET 后需追加回推 7.2/7.3 */
+
 static void light_on_set(const struct miot_prop *p)
 {
     s_dirty_siid = p->siid;
     s_dirty_piid = p->piid;
+    /* 切场景(mode)时联动改亮度/色温到该场景预设值（v_light_mode 已落新值） */
+    if (p->siid == 7 && p->piid == 4) {
+        for (size_t i = 0; i < sizeof(s_scenes) / sizeof(s_scenes[0]); i++) {
+            if (s_scenes[i].mode == v_light_mode) {
+                v_bright = s_scenes[i].bri;
+                v_ct     = s_scenes[i].cct;
+                s_scene_sync = 1;
+                break;
+            }
+        }
+    }
     ESP_LOGI(TAG, "<<< App 下发 set：%d.%d 已落值", p->siid, p->piid);
 }
 
@@ -541,6 +564,15 @@ void app_main(void)
             uint8_t siid = s_dirty_siid;
             uint16_t piid = s_dirty_piid;
             if (piid) { s_dirty_siid = 0; s_dirty_piid = 0; push_prop(siid, piid); }
+        }
+
+        /* 切场景联动：把改后的亮度/色温也回推给 App，否则 App 重新 GET
+         * 读到旧值会把滑块归位（用户实测「切场景后 1s 归位」）。 */
+        if (s_scene_sync) {
+            s_scene_sync = 0;
+            push_prop(7, 2);
+            push_prop(7, 3);
+            ESP_LOGI(TAG, "场景联动回推 bri=%u cct=%u", v_bright, v_ct);
         }
 
         if (s_auth.bound != s_was_bound) {
