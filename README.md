@@ -198,6 +198,7 @@ void app_main(void) {
 | 27 | 闪极 100W 迷你充电器（蓝牙版） | `sharge.plug.sj01` | `0x1E1C` | spec 直连 | ✅ 开关 set→回推闭环<br>全库唯一 BLE 插座，控制走手机 GATT 不经网关 | [`outlet_adv`](esp32/outlet_adv) |
 | 28 | 米家声波电动牙刷 T501 | `soocare.toothbrush.1501` | `0x1FF3` | 广播 | ✅ 电量/充电/刷头三属性双向<br>仓库首个牙刷品类；手环走 MiWear 私有栈不可做 | [`toothbrush_adv`](esp32/toothbrush_adv) |
 | 29 | 米家伺服扫振电动牙刷 Pro | `xiaomi.toothbrush.24p` | `0x6800` | 广播 | ✅ 电量/充电/刷头三属性双向<br>旗舰款，UI 更丰富（本周刷牙/覆盖率/参数设置）；刷头范围 0~100 | [`brushpro_adv`](esp32/brushpro_adv) |
+| 30 | 小米汽车磁吸补光灯 | `careco.nlight.o654` | `0x6266` | spec 直连 | ✅ 开关/亮度/色温/模式/对时 set→回推全闭环<br>仓库首个可调光+调色温本地控制类；亮度/色温滑块拖动实时 SET，控制走手机 GATT 不经网关 | [`carlight_adv`](esp32/carlight_adv) |
 
 **入门推荐**：蓝牙温湿度计 2 —— 标准认证、免网关、属性可验证，链路注释最全，最适合当模板改新型号。
 
