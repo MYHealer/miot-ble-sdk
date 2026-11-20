@@ -1,6 +1,6 @@
 # 逐设备实机验证清单
 
-> 目标：对 SDK 覆盖的 26 台设备逐台做米家 App 实机回归（清单见 README「设备清单」）。
+> 目标：对 SDK 覆盖的 27 台设备逐台做米家 App 实机回归（清单见 README「设备清单」）。
 > 每台记录：结果（✓/✗）、日期、备注（异常现象 / App 版本 / 固件版本）。
 >
 > 通用前置：
@@ -313,6 +313,7 @@ weigh step 1/7 rc=16 … 7/7 rc=24 → weigh-in done
 | 32 | 花花草草监测仪（小白版独立工程） | ✅ 通过（绑定 + 绑定植物 + 四属性上云） | 2026-11-19 | hhcc.plantmonitor.v1（PID **0x0098** = pdid 152），`esp32/plant_adv`。派生 MAC `10:00:3B:CE:81:05` + NVS `plant`，广播名 `HHCCJCY01`；米家扫描「花花草草监测仪」→ 添加 4/4（did `blt.3.1qtu2h9tg4001`）→ **绑定植物必须选（无跳过）**：马上添加 → 绿萝 → 完成；设备页土壤湿度/肥力/光照/空气温度 + 已连接蓝牙网关。**老式标准对象**（非 eid）：温度 0x1004→`3:2`、土壤湿度 **0x1008**→`2:1`、光照 **0x1007 u24**→`2:3`、土壤EC 0x1009→`2:2`。双向：`temp 251`→25.1、`hum 48`→48、`lux 1234`→1234、`ec 1600`→1600（全 code=0，设备页同步）。**坑1**：土壤湿度用 0x1008 不是 0x1006（0x1006→`2:1` 恒 -704010000、UI=0）；**坑2**：0x1007 必须 u24；**坑3**：验证前 force-stop 米家。SDK 首个植物监测品类。**小白版** |
 | 33 | 树色空气检测仪（小白版独立工程） | ✅ 通过（六属性上云双向，含 HCHO/TVOC） | 2026-11-20 | shuse.airm.ss006（PID **0x6651** = pdid 26193），`esp32/airm_adv`。派生 MAC `10:00:3B:CE:82:05` + NVS `airm`，广播名 `SS006`；米家扫描「树色空气检测仪（BLE）」（bt_match=0 但 resolve=3 仍出名）→ 添加完成（did `blt.3.1qtul47fk4o00`）→ 设备页温湿度/甲醛/CO2/TVOC。**新式 eid**：3.1001=`0x4C01`、3.1008=`0x4C08`、3.1028=`0x4C1C`、3.1029=`0x4C1D`、3.1030=`0x4C1E`、3.1031=`0x4C1F`。双向全 code=0：temp/hum/aqi/co2；**HCHO/TVOC 也能上云**（满密度单槽连发，实测 HCHO 0.42@135s、TVOC 0.66@195s）。**硬规则**：官方 spec HCHO/TVOC 范围 **[0,2] 步长 0.01**——超范围发值云端拒收（`-704220043`），且会把该属性读口打坏，须再发合法值覆盖才能恢复；温度步长 1（34.5→云端 35）。双槽必须**顺序排队不打断**（后发 fire 不抢占前槽），逐帧交替半密度进不去。删旧设备前 MAC 去重会扫不到。页面断连后显示「蓝牙网关已连接」——走网关非纯直连。**小白版** |
 | 34 | 小米水浸卫士2（小白版独立工程） | ✅ 通过（绑定 + 三属性上云双向） | 2026-11-20 | xiaomi.flood.oh83w（PID **0x6375** = pdid 25461），`esp32/flood2_adv`。派生 MAC `10:00:3B:CE:83:05` + NVS `flood2`，广播名 `OH83W`；米家扫描「小米水浸卫士2」→ 添加 3/3 完成（did `blt.3.1qu0jd2d44c00`）→ 设备页「未浸水/未淋水」+ 电池 95% + 感应记录。**新式 eid**：底部浸水 2.1006=`0x4806`(bool)、顶部淋水 2.1123=`0x487B`(bool)、电量 3.1003=`0x4C03`(u8)，公式 `eid=0x4000|(siid<<10)|(piid-1000)`。云端双向全 code=0：`bot 1`→`2:1006=true`、`top 1`→`2:1123=true`、`batt 77`→`3:1003=77`；反向 `bot 0/top 0/batt 42` 同样落库。一帧一对象三槽轮播。SDK 首个 submersion-sensor 2 代品类。**小白版** |
+| 35 | 闪极100W迷你充电器（小白版独立工程） | ✅ 通过（绑定 + 开关控制闭环 PC 全测） | 2026-11-20 | sharge.plug.sj01（PID **0x1E1C** = pdid 7708），`esp32/outlet_adv`。派生 MAC `10:00:3B:CE:7D:05` + NVS `outlet`，广播名 `SHARGE`；米家「添加设备」自动列出「闪极 100W 迷你充电器（蓝牙版）」→ 标准认证绑定 3/3（did `blt.3.1qu6o7kf04002`）。**全库唯一 BLE 插座**（pid=6，余皆 pid=8 WiFi）。**控制类**：可写属性 2.1 on(bool RW)/2.7 timer/2.8 timer-off，广播对象 2.1→`0x1001`(u8)。闭环 App set→`miot_props_apply` 落值→on_set→主循环回推。PC 单测全过（2.1 落值+回调、2.9 只读拒绝、2.7 clamp）。**直连型**：控制走手机 GATT 不经网关，云端 isOnline 常 false、云读 `-704010000` 属正常；验收看 set→回推不看云读。**小白版** |
 
 ### 15. 门窗传感器 2（`esp32/door_adv`）
 
@@ -1055,3 +1056,56 @@ URN：`urn:miot-spec-v2:device:submersion-sensor:0000A024:xiaomi-oh83w:1:0000D01
 | 35.5 | `batt 77` + `fire 2` | 云端 `3:1003=77` code=0 |
 | 35.6 | 反向 `bot 0/top 0/batt 42` | 全部回落 code=0 |
 | 35.7 | 删设备后重加 | 须先删云端旧设备（MAC 去重） |
+
+## 36. 闪极100W迷你充电器（`esp32/outlet_adv`）—— 2026-11-20 控制类首例
+
+**结论：✅ 自动列出 + 标准认证绑定 3/3 + 控制属性表 PC 全测通过。**
+工程 `esp32/outlet_adv`，MAC `10:00:3B:CE:7D:05`，NVS `outlet`，广播名 `SHARGE`。
+上云 did `blt.3.1qu6o7kf04002`。**仓库首个主动控制类独立工程**（此前全是传感器上报）。
+
+### 36.1 选型
+
+官方库里 BLE（pid=6/bt_bind_style=2）**插座仅一款**：`sharge.plug.sj01` 0x1E1C（pdid 7708）。
+其余插座（公牛 cp1d 等）都是 pid=8 WiFi，非 BLE。灯类控制只有 nl1(0x07F6)/ble1(0x0053，卡授权)。
+故 0x1E1C 是 BLE 主动控制类最简样本。
+
+### 36.2 控制闭环（与传感器类的本质区别）
+
+```
+App 点开/关 → GATT set_properties(2.1) → miot_props_apply 落值 v_on
+→ outlet_on_set 记 dirty(2.1) → 主循环 push_prop → send_props_changed 回推
+→ build_frame 把新态写进广播 0x1001
+```
+
+| 属性 | siid.piid | 类型 | 读写 | 广播对象 |
+|---|---|---|---|---|
+| on | 2.1 | bool | **RW** | 0x1001 (u8) |
+| timer | 2.7 | uint8 [0,24] | RW | — |
+| timer-off | 2.8 | uint8 [0,24] | RW | — |
+| left-time | 2.9 | uint8 | R | — |
+
+URN：`urn:miot-spec-v2:device:outlet:0000A002:sharge-sj01:1`（私有 sharge-spec）
+
+### 36.3 ★直连型 ≠ 网关型（选型铁律）
+
+标准 BLE（pid=6）控制**走手机 GATT 直连**，网关不转发 → 云端 `isOnline` 常 false，
+`miot_device_status_read` 报 `-704010000`（设备不在线）属**正常**，不是失败。
+要云控必须 BLE Mesh(pid=16)，但绑定需证书私钥（已证实无私钥不可达）。
+所以本工程验收看「set→回推」，不看云端读数。
+
+### 36.4 PC 回归（控制表）
+
+`gcc -I include src/miot_props.c src/miot_spec.c /tmp/test_outlet.c`：
+- set 2.1 on=1 → apply=1、v_on=1、on_set_called=1、dirty=2.1 ✅
+- set 2.9（只读）→ apply=0、不触发回调 ✅
+- set 2.7 timer=30 → clamp 到 24 ✅
+
+### 36.5 验收清单
+
+| # | 操作 | 预期 |
+|---|---|---|
+| 36.1 | 添加设备 | 自动列出「闪极 100W 迷你充电器（蓝牙版）」，绑定 3/3 |
+| 36.2 | 扫帧 | `70 2a 1c 1e ... 7d ce 3b 00 10`，PID 0x1E1C |
+| 36.3 | PC set 单测 | 2.1 落值 + on_set + 2.9 拒绝 + clamp 全通过 |
+| 36.4 | App 详情页点开关 | set 下发 → 回推（固件侧闭环，需 App GATT 会话在线） |
+| 36.5 | 删设备后重加 | 须先 `factory` 擦身份 + 云端删旧设备（MAC 去重） |
