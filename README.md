@@ -18,7 +18,7 @@
 ┌──────────────────────────────────────────────────────────┐
 │  你的产品逻辑（体重计 / 温湿度计 / 灯 / 任意 MIoT 设备）      │
 ├──────────────────────────────────────────────────────────┤
-│  miot_profiles 已验证设备档案（14 台设备，见下方设备清单）     │
+│  miot_profiles 已验证设备档案（24 台设备，见下方设备清单）     │
 │  miot_beacon   MiBeacon v5 加密广播帧（不建连接的传感器）      │
 ├──────────────────────────────────────────────────────────┤
 │  miot_device   组合层：加密通道+分派+属性表+主动上报           │
@@ -89,37 +89,10 @@ App 建立会话后 `login=1`。三态的含义见 [docs/troubleshooting.md](doc
 **换一台设备**：串口发 `dev` 看 12 个序号，`dev 1` 切到温湿度计2，设备会擦身份自动重启。
 **板载 BOOT 键**：短按 = 触发一次称重（等价于真机上「人踩上去」）；长按 5 秒 = 清 NVS 恢复出厂。
 
-**只想要一台设备的最小工程？** 不用动 multi_dev，直接用下面这 6 个（各自独立、互不依赖，
-每个都是 `app_main.c` + `gatt_miot.c` 两个文件、700~950 行，不含 Mesh 栈，
-`idf.py erase-flash flash monitor` 就能烧）：
-
-| 工程 | 模拟设备 | 代码量 | 实测状态 |
-|---|---|---|---|
-| [`esp32/t3pro_adv`](esp32/t3pro_adv) | 温湿度计 3 Pro（0x9AB9） | 866 行 | ✅ 2026-11-13 绑定后温/湿/CO₂ 三项同时出数，小爱可查，云端有历史曲线 |
-| [`esp32/btn1_adv`](esp32/btn1_adv) | 无线开关 单键（0x2387） | 799 行 | ✅ 绑定通过 + 单击/双击/长按事件加密广播上云；README 含与云端产品定义的逐层对比 |
-| [`esp32/btn2_adv`](esp32/btn2_adv) | 无线开关 双键（0x1949） | 790 行 | ✅ 2026-11-14 实机：米家添加一次过，左键单击 `0x4E0C` / 双击 `0x4E0D`（`key=1`）、右键单击 `0x4E0C`（`key=2`）均上云；长按待测。**烧前必看**：派生 MAC，直接烧物理 MAC 会被米家去重扫不到 |
-| [`esp32/v5kwm_adv`](esp32/v5kwm_adv) | V5 无线八键开关（giot.remote.v58kwm / 0x3F3A） | 562 行 | ✅ 2026-11-14 实机全通过：米家添加一次过，单击/双击/长按全上云触发自动化（小爱音箱 Play 增强版盲网关转发）。**事件对象 0x4A0C/0x4A0D/0x4A0E**——沿 btn2 的 0x4E0C 家族会「能绑能建自动化但按了静默无反应」。八键模拟：单击 BOOT 键号循环 1→8，双击/长按作用于当前键，≥5s 恢复出厂。**小白版** |
-| [`esp32/thermo_gatt`](esp32/thermo_gatt) | 温湿度计 2（0x055B） | 745 行 | ✅ 2026-11-07 绑定 + 设备页实时读数；链路注释最全，适合当模板改别的型号 |
-| [`esp32/scale_adv`](esp32/scale_adv) | 体脂秤 S400（0x30D9） | 870 行 | ✅ 2026-11-14 实机：绑定一次过 → `13.1 sync` 应答 5 个 out → 点「测量」`ACTION 10.1` → 7 帧称重全部 `rc>0`、连称三条各自入库 → **离线称重**（断手机 + 短按 BOOT）后下次连手机整段 7 帧重放、App 直接出报告；记录时间由 `13.1` 的手机时间校准。**烧后必调**：`CONFIG_BT_NIMBLE_HOST_TASK_STACK_SIZE=8192`，默认 4096 会在 spec 解析时栈溢出复位 |
-| [`esp32/door_adv`](esp32/door_adv) | 门窗传感器 2（0x098B） | 420 行 | ✅ 2026-11-14 实机：米家添加一次过 → 会话建立 → 短按 BOOT 开/关门事件各连发 3 帧上云（`0x1019` 0/1 + `0x1018` 光照 + `0x100A` 电量）。**小白版**：参数全在文件头、日志中文、派生 MAC `…:5D:03` |
-| [`esp32/motion_adv`](esp32/motion_adv) | 人体传感器 2（0x0A8D） | 430 行 | ✅ 2026-11-14 实机：米家添加一次过（`REGISTER COMPLETE 0x11`）→ 短按 BOOT 连发 3 帧 `0x000F=1`（有人）→ 60s 后自动回落无人。**小白版**，与 `door_adv` 同骨架，派生 MAC `…:5E:03` |
-| [`esp32/pir2s_adv`](esp32/pir2s_adv) | 人体传感器 2S（xiaomi.motion.pir1 / 0x3531） | 620 行 | ✅ 2026-11-15 实机：绑定 + 移动/光照上云（短按 BOOT = `0x4A08` 移动事件带光照、双击 = `0x4805` 光照三档、无人 60s 自动回落推 `0x4818`）。**MiBeacon2 spec 对象号公式**（`eid=0x4000\|事件位\|siid<<10\|(iid-1000)`）首秀；**两条硬教训**：① pir1 是「设备确认配对」类产品，直连后广播必须保持请求配对形态，连接即停播必 `-28`（troubleshooting Q12）；② 电量公式值 `0x4C03` 网关不映射，App 恒「--」，用标准对象 `0x100A`。派生 MAC `…:73:03` + NVS `pir2s`。**小白版** |
-| [`esp32/door3_adv`](esp32/door3_adv) | 门窗传感器 3（xiaomi.magnet.03 / 0x8C05） | 620 行 | ✅ 2026-11-17 实机：绑定 3/3 完成（did `00 62 6C 74`，重刷仍「已绑定」）+ 开合/电量上云。**新式 spec 对象号按公式算**（不是照抄门窗2 的 0x1019）：`eid=0x4000\|(siid<<10)\|(piid-1000)` → 开合 2.1012 = **0x480C** / 电量 3.1107 = **0x4C6B**。**两个坑**：① 对象号：发 0x1019 云端 `2:1012` 恒 null；② **载荷类型**：电量是**枚举**（0=Fully/1=Low）不是百分比，发 95 被网关整帧丢弃→云端恒 null，改发 0/1 立即通（类型错比对象号错更隐蔽）。派生 MAC `…:6F:05` + NVS `door3`。串口 `open/close/toggle/obj/batt/bval`。**小白版** |
-| [`esp32/smoke_adv`](esp32/smoke_adv) | 烟雾传感器（mirsz.sensor_smoke.s500 / 0x392E） | 611 行 | ✅ 2026-11-17 实机：绑定 3/3 + 设备页「设备状态 正常」+ 火警上云。**新式 spec 对象号公式** `eid=0x4000\|(siid<<10)\|(piid-1000)` → fire-alarm 2.1043 = **0x482B**（1B bool）。串口 `alarm N` / `toggle` 双向验证 `2:1043=true`。**坑**：设值须保持串口连接；多字母命令 strncmp 长度与偏移要同步。派生 MAC `…:77:05` + NVS `smoke`。**小白版** |
-| [`esp32/petwater_adv`](esp32/petwater_adv) | 米家无线智能宠物饮水机（xiaomi.pet_waterer.002 / 0x399A） | 640 行 | ✅ 2026-11-18 实机：扫描识别 + 绑定 3/3（did `blt.3.1qtgp3bm84o04`）+ 设备页全功能 UI（今日出水次数/滤芯/电量/模式）。**新式 spec 三槽轮播**：缺水 2.1067=`0x4843`(bool) / 滤芯 3.1076=`0x4C4C`(uint8) / 电量 5.1003=`0x5403`(uint8)，三属性云端双向全通（`alarm 1`→`2:1067=true`、`filt 50`→`3:1076=50`、`batt 35`→`5:1003=35`）。**两个坑**：① 三对象同帧超 26B → `rc=-2`，必须一帧一对象轮播；② 验证时 App 设备页不能开着（占 BLE 连接→网关收不到广播）。派生 MAC `…:78:05` + NVS `petwater`。SDK 首个宠物品类。**小白版** |
-| [`esp32/nl1_adv`](esp32/nl1_adv) | 米家夜灯2 蓝牙版（yeelink.light.nl1 / 0x07F6） | 620 行 | ✅ 2026-11-19 实机：扫描识别 + 添加 4/4（did `blt.3.1qtq2jessck00`）+ 设备页完整渲染（夜灯设置/智能场景/传感器日志）+ 无人时长上云双向。**标准夜灯 spec**（非私有）：2.1 no-motion-duration / 3.1 battery / 4.1 illumination，全 read/notify。广播对象标准 `0x1017`（no-motion 4B 秒数，非新式 eid 公式），网关按枚举归档：`motion 123`→`2:1=2`、`motion 600`→`2:1=10`（全 code=0）。**关键对照**：同族 careco 0x6266 私有 spec `access=[]` → 1.3s 必断 0x213；本型号标准 spec + display=232 同样能过。派生 MAC `…:7B:05` + NVS `nl1`。**小白版** |
-| [`esp32/senpres_adv`](esp32/senpres_adv) | 领普压力有无传感器（linp.senpres.ps1bb / 0x3F4C） | 639 行 | ✅ 2026-11-19 实机：扫描识别 + 绑定 3/3（did `blt.3.1qtto9isg4402`）+ 设备页「无压力/有压力」+ 蓝牙网关已连接。**标准 pressure-sensor 新式 spec**：有无压力 2.1060=`0x483C`(bool) / 电量 3.1003=`0x4C03`(uint8 %)，公式 `eid=0x4000\|(siid<<10)\|(piid-1000)`，双向 `press 0/1`→`2:1060`、`batt 77/33`→`3:1003` 全 code=0。坑：事件帧须带 `s_ev_obj` 刚触发对象；验证时先关设备页。派生 MAC `…:7F:05` + NVS `senpres`。SDK 首个 pressure-sensor 品类。**小白版** |
-| [`esp32/plant_adv`](esp32/plant_adv) | 花花草草监测仪（hhcc.plantmonitor.v1 / 0x0098） | 621 行 | ✅ 2026-11-19 实机：扫描识别 + 添加 4/4（did `blt.3.1qtu2h9tg4001`）+ 绑定植物（绿萝）+ 设备页四槽（土壤湿度/肥力/光照/空气温度）+ 上云双向。**老式标准对象**：温度 0x1004→`3:2`、土壤湿度 **0x1008**→`2:1`、光照 **0x1007 u24**→`2:3`、EC 0x1009→`2:2`。坑：土壤湿度勿用 0x1006；绑定植物无跳过；验证先关设备页。派生 MAC `…:81:05` + NVS `plant`。SDK 首个植物监测品类。**小白版** |
-| [`esp32/airm_adv`](esp32/airm_adv) | 树色空气检测仪（shuse.airm.ss006 / 0x6651） | ~760 行 | ✅ 2026-11-20 实机全通过：扫描（bt_match=0 仍出名）+ 绑定 + 设备页渲染；六属性上云双向 code=0——temp/hum/aqi/co2 + **HCHO 0.42@135s / TVOC 0.66@195s**。硬规则：HCHO/TVOC 官方 range **[0,2]**，超范围 `-704220043` 打坏读口，合法值满密度连发恢复；双槽顺序排队不打断。eid：0x4C01/4C08/4C1C/4C1D/4C1E/4C1F。派生 MAC `…:82:05` + NVS `airm`。**小白版** |
-| [`esp32/occ_adv`](esp32/occ_adv) | 人体存在传感器（xiaomi.sensor_occupy.03 / 0x4683） | 620 行 | ✅ 2026-11-15 实机：绑定 + 存在状态/光照上云（短按 BOOT = `0x484E` 有人/无人切换、双击 = `0x4805` 光照三档、有人 120s 无动作自动回无人）。对象 0x484E 存在状态 / 0x4805 光照 / 0x4852·0x4851 有人无人时长 / 0x100A 电量。派生 MAC `…:74:03` + NVS `occ`。**小白版** |
-| [`esp32/gas_adv`](esp32/gas_adv) | 燃气传感器（mirsz.sensor_gas.ga500 / 0x392D） | 611 行 | ✅ 2026-11-17 实机：绑定 3/3 + 场景页自动出「燃气超标提醒」（云端按 spec 正确识别铁证）+ 浓度上云。**新式 spec 对象号公式** `eid=0x4000\|(siid<<10)\|(piid-1000)` → gas-concentration 2.1011 = **0x480B**（4B float）。串口 `gas N` / `toggle` 双向验证 `2:1011=35`。**坑**：设值后须保持串口连接（断串口复位值回默认）。派生 MAC `…:76:05` + NVS `gas`。SDK 首个燃气品类。**小白版** |
-| [`esp32/leak_adv`](esp32/leak_adv) | 水浸传感器（0x0863） | 430 行 | ✅ 2026-11-14 实机：米家添加一次过（`REGISTER COMPLETE 0x11`）→ 短按 BOOT 连发 3 帧 `0x1014=1`（漏水），设备页转「漏水」并进感应记录。**小白版**，派生 MAC `…:5F:03` |
-| [`esp32/nightl2_adv`](esp32/nightl2_adv) | 夜灯2（MUE4094RT / 0x03DD） | 2143 行 (+1917 行 GATT) | ✅ 2026-11-14 实机：烧录通过 → 米家添加成功（`bound=1`，did 入库）→ 详情页连通轮询。**注意**：重烧固件后手机必须关/开蓝牙，否则 Android 命中旧 GATT 缓存必然 `status 133` 超时。全仓库唯一详情页走 **NUS 文本协议** 的设备——legacy token 绑定 + ag2 建链（001A/001B）+ `6E400001/2/3` 收发 `get_prop` / `set_bright` / `apply_fixed_scene`。单型号、不编 Mesh、NVS `nightl2`、MAC `…:70:03`、默认待绑定广播（`advu 0` 可切）。链路来自 `multi_dev` 实机验证；已知：详情页偶发超时 / 删设备重加先 `factory` / 无「如果」触发条件 |
-| [`esp32/bulb_gatt`](esp32/bulb_gatt) | LED 灯泡 蓝牙 Mesh 版（MJDP003） | 734 行 (+245 行 GATT) | ❌ **2026-11-14 编译 + 烧录 + 广播实测通过，但米家绑定被拒 `-27`**：spec 直连、以及挂 NimBLE Mesh 栈（0x1827/2adb/2adc 就位）两种形态都试过，App 都在 400ms 内「读完服务表、零写入即断开」→ 拒绝点在 PID 类型层。`0x06EB` 是 MJDP09YL 的代号，只能等 MJDP003 真机扫一帧取真 PID（串口 `pid 0xXXXX` 写入，不用重编） |
-| [`esp32/hcho_adv`](esp32/hcho_adv) | 甲醛检测仪（JQJCY01YM / 0x02DF） | 559 行 | ✅ 2026-11-14 实机：米家添加一次过（did `00 62 6C 74`，bound=1，重启后仍「已绑定」）。派生 MAC `…:61:03` + NVS `hcho`；四槽轮播 `0x1010` 甲醛 / `0x1004` 温度 / `0x1006` 湿度 / `0x100A` 电量；短按 BOOT = 甲醛「合格 0.02 / 超标 0.30」切换并连发 3 帧。**小白版** |
-| [`esp32/wx08zm_gatt`](esp32/wx08zm_gatt) | 驱蚊器 智能版（0x040A） | 944 行 | ⚠️ 编译通过、能回待绑定态；legacy PSK 握手是否被云端接受**尚未真机验证** |
-
-骨架同构（`thermo_gatt` 是最干净的那份，`door_adv`/`motion_adv` 是最适合照抄改型号的小白版），换型号只改三处：**PID、spec 属性表、广播对象号**。
+**只想要一台设备的最小工程？** 不用动 multi_dev —— 见下方 [设备清单](#设备清单) 的「工程」列，
+每台设备都有独立工程（`app_main.c` + `gatt_miot.c`，不含 Mesh 栈，`idf.py erase-flash flash monitor` 直接烧）。
+骨架同构（`thermo_gatt` 注释最全、最适合当模板；`door_adv` / `motion_adv` 是最小的小白版），
+换型号只改三处：**PID、spec 属性表、广播对象号**。
 
 人类一页纸版本：[QUICKSTART.md](QUICKSTART.md)；让 AI 代劳的版本：[AGENTS.md](AGENTS.md)。
 
@@ -177,52 +150,69 @@ void app_main(void) {
 }
 ```
 
-## 设备清单（14 台，米家 Android App 实测状态）
+## 设备清单
 
-> **先看这一条**：各档案在**官方原版 App（无任何模块、未 root）**下能否添加，
-> 见 [docs/clean-app-matrix.md](docs/clean-app-matrix.md)。
->
-> ⚠️ **两个档案当前有问题，不要当「开箱即用」演示**：
-> **夜灯2（0x03DD）** 与 **驱蚊器智能版（0x040A）**。具体现象与规避方式见
-> [docs/known-issues.md](docs/known-issues.md)；夜灯2 的完整打通记录（NUS 文本协议 +
-> legacy RC4 登录 + 去 hook 验证）见
-> [docs/nightl2-ag2-handoff.md](docs/nightl2-ag2-handoff.md)。
-> 其余档案的 legacy PSK 分支已在 `miot_auth` 实现（默认 `AUTO` 自动判定），
-> **但尚未实机验证**，帧格式与已实现状态机见 [docs/psk-auth.md](docs/psk-auth.md)。
-> 推荐入门档案：**蓝牙温湿度计2**（标准认证、免网关、属性可验证）。
->
-> 「详情」= 该设备代码的存放位置：`examples/<设备>/main.c`（可运行演示）+
-> `src/miot_profiles.c`（spec 属性表）/ `include/miot_ble/miot_beacon.h`（广播对象表）。
+24 台设备，全部在米家 Android App 上做过实机验证（扫描添加 → 绑定 → 数据互通），仅第 24 台未通过、保留作协议研究记录：
 
-### A. spec 连接型（建 GATT 连接，走标准认证 + spec v2 通道）
+- ✅ 实测通过　⚠️ 能用但带已知问题　❌ 未打通（保留作协议研究记录）
+- 能否用**官方原版 App（无模块、未 root）**添加，逐条对照 → [docs/clean-app-matrix.md](docs/clean-app-matrix.md)
+- 逐设备回归步骤与踩坑 → [docs/testing.md](docs/testing.md)
 
-| # | 设备名 | 型号 / model | 描述 | 验证状态 | 详情（代码） |
-|---|--------|--------------|------|----------|--------------|
-| 1 | 米家体脂秤 S400 | MJTZC01YM / `yunmai.scales.ms103`（PID 0x30D9） | 绑定/登录/用户资料推送/测量事件上报（8.1 过程流 + 8.2 结果 + 11.1022 + 属性变更）全链路，含云端入库与完整身体成分报告 | 全流程 ✓（App 实时页 + 报告页 + 云端历史实测通过） | [examples/scale_s400/](examples/scale_s400/main.c) · `src/miot_profiles.c §1` |
-| 2 | 蓝牙温湿度计2 | LYWSD03MMC(t9) / `cgllc-cgdk3`（PID 0x055B） | 双 spec siid 兼容（同一属性在两个 spec 里 siid 不同，两份都注册），温度 float / 湿度 / 电量，周期上报 | 绑定 + spec 读写 ✓ | [examples/thermometer/](examples/thermometer/main.c) · `src/miot_profiles.c §2` |
-| 3 | 夜灯2 | MUE4094RT（PID 0x03DD） | 亮度%(1-100)/延时ms/开关 + 4 个固定场景；`esp32/multi_dev` 走**北欧 NUS 文本协议**（`6E400001/2/3`）+ legacy RC4 登录（4B 恒等 `E0C7FAFE`） | ⚠️ **已打通但有问题**：原版 App 可绑定，详情页可读可写（实测 `set_bright 35` → 回读 35）；遗留 ① 偶发「连接超时」（页面打开瞬间未抢到连接，重试自恢复）② 删除设备后重扫前**必须先 `factory`**（设备侧带 token 时广播 BondAbility=0x29，扫描列表直接过滤）③ 无「如果」触发条件（spec 只有属性、无 event） | [examples/night_light/](examples/night_light/main.c)（spec 层）· `esp32/multi_dev`（NUS 全链路） |
-| 4 | 驱蚊器智能版 | WX08ZM（PID 0x040A） | 开关下行 + set 后立刻回报（页面开关停在正确位置）+ 电量/驱蚊片余量 | ⚠️ **有问题**（现象待登记，见 [docs/known-issues.md](docs/known-issues.md)） | [examples/repeller/](examples/repeller/main.c) · `src/miot_profiles.c §6` |
-| 5 | 米家无线开关（双键版） | XMWXKG01YL / `yeelink.remote.contrl`（PID 0x1949） | 绑定 + 按键事件广播（0x4E0C 单击 / 0x4E0D 双击 / 0x4E0E 长按，载荷 1B = 键位 1 左 / 2 右）；按键值不进 GATT，事件只走广播 | 绑定 + 事件上报 ✓（连接握手偏慢，见 testing.md #5） | [examples/button_event/](examples/button_event/main.c) · `miot_beacon.h` |
+| # | 设备 | 型号 / spec | PID | 通道 | 状态 | 工程 |
+|---|------|-------------|-----|------|------|------|
+| 1 | 米家体脂秤 S400 | MJTZC01YM<br>`yunmai.scales.ms103` | `0x30D9` | spec | ✅ 实时页 + 身体成分报告 + 云端历史 | [`scale_adv`](esp32/scale_adv) · [`scale_s400`](examples/scale_s400) |
+| 2 | 蓝牙温湿度计 2 | LYWSD03MMC<br>`cgllc-cgdk3` | `0x055B` | spec + 广播 | ✅ 2026-11-07 纯净 App 实测，页面实时读数 | [`thermo_gatt`](esp32/thermo_gatt) · [`thermometer`](examples/thermometer) |
+| 3 | 夜灯 2 | MUE4094RT | `0x03DD` | 标准首绑 + NUS 控制 | ⚠️ 可用，3 个已知问题见下 | [`nightl2_adv`](esp32/nightl2_adv) · [`night_light`](examples/night_light) |
+| 4 | 驱蚊器 智能版 | WX08ZM | `0x040A` | legacy PSK | ⚠️ 编译通过，绑定未实测 | [`wx08zm_gatt`](esp32/wx08zm_gatt) · [`repeller`](examples/repeller) |
+| 5 | 米家无线开关（双键） | XMWXKG01YL<br>`yeelink.remote.contrl` | `0x1949` | 事件 | ✅ 绑定 + 单击/双击上云 | [`btn2_adv`](esp32/btn2_adv) · [`button_event`](examples/button_event) |
+| 6 | 小米无线开关（单键） | XMWXKG01CM | `0x2387` | 事件 | ⚠️ 绑定 + 事件可用，待纯净复核 | [`btn1_adv`](esp32/btn1_adv) · [`button`](examples/button) |
+| 7 | V5 无线八键开关 | `giot.remote.v58kwm` | `0x3F3A` | 事件（盲网关） | ✅ 单击/双击/长按全上云 | [`v5kwm_adv`](esp32/v5kwm_adv) |
+| 8 | 甲醛检测仪 | JQJCY01YM | `0x02DF` | 广播 | ✅ 2026-11-14 添加一次过，重启仍绑定 | [`hcho_adv`](esp32/hcho_adv) · [`sensor_hcho`](examples/sensor_hcho) |
+| 9 | 门窗传感器 2 | MCCGQ02HL | `0x098B` | 广播 | ✅ 开/关门事件上云 | [`door_adv`](esp32/door_adv) · [`sensor_door`](examples/sensor_door) |
+| 10 | 门窗传感器 3 | `xiaomi.magnet.03` | `0x8C05` | 广播 | ✅ 2026-11-17 绑定 + 开合/电量上云<br>对象号按公式算（`0x480C`），电量是枚举非百分比 | [`door3_adv`](esp32/door3_adv) |
+| 11 | 人体传感器 2 | RTCGQ02LM | `0x0A8D` | 广播 | ✅ 有人/无人 + 光照上云 | [`motion_adv`](esp32/motion_adv) · [`sensor_motion`](examples/sensor_motion) |
+| 12 | 人体传感器 2S | XMPIRO25XS<br>`xiaomi.motion.pir1` | `0x3531` | 广播 + 确认配对 | ✅ 移动/光照上云<br>绑定需保持「请求配对」广播，否则 `-28` | [`pir2s_adv`](esp32/pir2s_adv) |
+| 13 | 人体存在传感器 | XMOSB01XS<br>`xiaomi.sensor_occupy.03` | `0x4683` | 广播 | ✅ 存在状态/光照上云 | [`occ_adv`](esp32/occ_adv) |
+| 14 | 水浸传感器 | SJWS01LM | `0x0863` | 广播 | ✅ 漏水事件上云 | [`leak_adv`](esp32/leak_adv) · [`sensor_leak`](examples/sensor_leak) |
+| 15 | 温湿度计 3 mini | MJWSD06MMC | `0x55B5` | 广播 | ✅ 温/湿/电量轮播<br>国区 PID；海外 `0x5BEA` 国区扫不到 | [`thermo_t3m`](examples/thermo_t3m) · `multi_dev` 档案 `T3M` |
+| 16 | 温湿度计 3 Pro | MJWSD07MMC | `0x9AB9` | 广播（按键唤醒） | ✅ 温/湿/CO₂ 三数同出，小爱可查 | [`t3pro_adv`](esp32/t3pro_adv) |
+| 17 | 燃气传感器 | `mirsz.sensor_gas.ga500` | `0x392D` | 广播 | ✅ 浓度上云 + 场景页自动出「燃气超标」 | [`gas_adv`](esp32/gas_adv) |
+| 18 | 烟雾传感器 | `mirsz.sensor_smoke.s500` | `0x392E` | 广播 | ✅ 火警上云 | [`smoke_adv`](esp32/smoke_adv) |
+| 19 | 无线智能宠物饮水机 | `xiaomi.pet_waterer.002` | `0x399A` | 广播 | ✅ 缺水/滤芯/电量三属性双向<br>三对象同帧超 26B，必须逐帧轮播 | [`petwater_adv`](esp32/petwater_adv) |
+| 20 | 夜灯 2 蓝牙版 | `yeelink.light.nl1` | `0x07F6` | 广播 | ✅ 无人时长双向（标准 spec，非私有） | [`nl1_adv`](esp32/nl1_adv) |
+| 21 | 领普压力有无传感器 | `linp.senpres.ps1bb` | `0x3F4C` | 广播 | ✅ 有无压力 + 电量双向 | [`senpres_adv`](esp32/senpres_adv) |
+| 22 | 花花草草监测仪 | `hhcc.plantmonitor.v1` | `0x0098` | 广播 | ✅ 土壤湿度/肥力/光照/气温四槽<br>土壤湿度用 `0x1008`，别用 `0x1006` | [`plant_adv`](esp32/plant_adv) |
+| 23 | 空气检测仪（树色） | `shuse.airm.ss006` | `0x6651` | 广播 | ✅ 温/湿/AQI/CO₂/HCHO/TVOC 六属性双向<br>HCHO·TVOC 官方 range [0,2]，超范围打坏读口 | [`airm_adv`](esp32/airm_adv) |
+| 24 | LED 灯泡（蓝牙 Mesh 版） | MJDP003 | `0x06EB`（推断） | Mesh spec | ❌ `-27`，拒绝点在 PID 类型层 | [`bulb_gatt`](esp32/bulb_gatt) |
 
-### B. MiBeacon 广播型（不建连接，加密广播帧）
+**入门推荐**：蓝牙温湿度计 2 —— 标准认证、免网关、属性可验证，链路注释最全，最适合当模板改新型号。
 
-| # | 设备名 | 型号 / PID | 描述 | 验证状态 | 详情（代码） |
-|---|--------|-----------|------|----------|--------------|
-| 6 | 甲醛检测仪 | JQJCY01YM（PID 0x02DF） | 0x1010 甲醛(0.01mg/m³) / 0x1004 温度 / 0x1006 湿度 / 0x100A 电量，四槽轮播分帧 | ✓（2026-11-14 独立工程实机：绑定 + 重启保持） | [esp32/hcho_adv/](esp32/hcho_adv) · [examples/sensor_leak/](examples/sensor_leak/main.c) |
-| 7 | 门窗传感器2 | MCCGQ02HL（PID 0x098B） | 0x1019 开合(开/关/超时未关/复位) / 0x1018 光照 / 0x100A 电量 | ✓（2026-11-14 独立工程实机） | [esp32/door_adv/](esp32/door_adv) · [examples/sensor_door/](examples/sensor_door/main.c) |
-| 8 | 人体传感器2 | RTCGQ02LM（PID 0x0A8D） | 0x000F 移动+光照 / 0x1017 无人时长 / 0x100A 电量 | ✓（2026-11-14 独立工程实机） | [esp32/motion_adv/](esp32/motion_adv) · [examples/sensor_motion/](examples/sensor_motion/main.c) |
-| 9 | 水浸传感器 | SJWS01LM（PID 0x0863） | 0x1014 漏水状态(0=正常 >0=漏水) / 0x100A 电量 | ✓（2026-11-14 独立工程实机） | [esp32/leak_adv/](esp32/leak_adv) · [examples/sensor_leak/](examples/sensor_leak/main.c) |
-| 10 | 温湿度计3 mini | MJWSD06MMC（国区 pdid 21941 = **0x55B5**；0x5BEA 是海外版 23530，国区扫不到） | 0x4C01 温度 float32 / 0x4C02 湿度 uint8 / 0x4803 电量 uint8（对象 ID 依 XiaomiGateway3 `mi`=19457/19458/18435） | ✓ | [examples/thermo_t3m/](examples/thermo_t3m/main.c) · `miot_beacon.h` |
-| 11 | 温湿度计3 Pro | MJWSD07MMC（PID **0x9AB9**） | 0x5C01 温度 float32 / 0x5C02 湿度 uint8 / 0x601D CO₂ uint16 / 0x4803 电量 uint8，四对象三帧轮换（一帧装不下）。**对象号是 3 Pro 专属的新系列，沿用 3 mini 的 0x4C01/0x4C02 会导致「设备在线但数值全空」**。真机为按键连接模式（平时不广播可连接态，按键后才 `solicited=1`） | ✓（广播 → 网关解密 → 云端 → 小爱语音查温湿度，全链路实测；2026-11-13 23:12 独立工程实机三项同时出数：温度 / 湿度 / CO₂） | [esp32/t3pro_adv/](esp32/t3pro_adv)（单设备完整工程，`idf.py build` 即烧）· `multi_dev` 档案 `T3PRO` |
+### 三种通道（决定「能不能绑、数据怎么走」）
 
-### C. 事件型按键（可连接用于绑定，事件本身走广播）
+| 通道 | 建连接？ | 绑定 / 数据路径 | 对应设备 |
+|---|---|---|---|
+| **spec 连接型** | 是 | 标准认证（ECDH P-256 REGISTER + HKDF LOGIN）→ spec v2 通道收发 | 1 体脂秤 · 2 温湿度计 2 · 3 夜灯 2 · 4 驱蚊器 |
+| **广播型** | 否（只在绑定时连一下） | MiBeacon v5 加密广播 → 网关解密上云 | 8~23 全部传感器 / 灯 / 家电类 |
+| **事件型** | 可连（仅用于绑定） | 按键事件走加密广播，不进 GATT | 5 双键 · 6 单键 · 7 V5 八键 |
 
-| # | 设备名 | 型号 / PID | 描述 | 验证状态 | 详情（代码） |
-|---|--------|-----------|------|----------|--------------|
-| 12 | 小米无线开关（蓝牙版） | XMWXKG01CM / pdid 9095（**PID 0x2387**） | 单键：0x4E0C 单击 / 0x4E0D 双击 / 0x4E0E 长按，载荷恒 1；绑定走 legacy 移位应答，事件由网关收广播后触发自动化 | ✓（绑定 + 事件；自动化条件需重连网关后出现，上报有网关轮询延迟） | [examples/button_event/](examples/button_event/main.c) · `miot_beacon.h` |
+### 五个必踩的坑
 
-> 各设备的验证均针对米家 Android App 实测（扫描添加 → 绑定 → 数据互通），
-> 逐设备回归步骤见 [docs/testing.md](docs/testing.md)。
+| 坑 | 现象 | 出处 |
+|---|---|---|
+| **MAC 必须派生** | 直接烧物理 MAC，米家去重后扫不到（像是「设备已被添加」） | 各 `esp32/*_adv` README |
+| **对象号别照抄同族** | 用错对象号＝能绑、能建自动化，但数据/按键静默丢弃。新式 spec 一律按公式算：`eid = 0x4000 \| (siid<<10) \| (piid-1000)` | [testing.md §23](docs/testing.md) · 门磁3 / 燃气 / 烟雾 / 压力 |
+| **载荷类型比对象号更隐蔽** | 电量发 95% 被网关整帧丢弃（该属性是枚举 0/1）；类型错时云端恒 null，不报错 | [testing.md](docs/testing.md) 汇总表 #26（门窗 3） |
+| **一帧一对象** | 多属性塞同一帧超 26B → `rc=-2`；三槽/四槽设备必须逐帧轮播 | 宠物饮水机 / 花花草草 README |
+| **栈大小 / GATT 缓存** | `scale_adv` 需 `HOST_TASK_STACK_SIZE=8192`；`nightl2_adv` 重烧后手机须关/开蓝牙，否则 `status 133` | 对应工程 README |
+
+另：**验证时先关掉 App 设备页**——页面打开会占住 BLE 连接，网关收不到广播，会误判「设备不上报」。
+
+`multi_dev` 一个工程内置 **12 个档案**（串口 `dev` 查看、`dev N` 切换，切档自动擦身份重启），
+适合对比同一套骨架在不同 PID 下的差异；上表 24 台里除 15 号外都有独立工程。
+
+> ⚠️ 两台带已知问题、**不要当「开箱即用」演示**：**夜灯 2**（详情页偶发超时 / 删设备重加前必须
+> 先 `factory` / 无「如果」触发条件）与 **驱蚊器智能版**。完整记录见
+> [docs/known-issues.md](docs/known-issues.md)、[docs/nightl2-ag2-handoff.md](docs/nightl2-ag2-handoff.md)。
 
 ## 已知边界（明确未适配）
 
@@ -250,7 +240,7 @@ void app_main(void) {
 | `miot_ag2` | 可靠传输 | `rx` / `send`（18B 分帧，512B 重组） |
 | `miot_crypto` | 加密抽象 | `set_ops`（hmac/ccm/ecdh 5 原语）+ rc4/mixA/mixB/hkdf/ccm 工具 |
 | `miot_beacon` | 广播帧 | `miot_beacon_frame_v5` + 对象编码（`miot_beacon_obj_*`），覆盖广播型传感器 |
-| `miot_profiles` | 设备档案 | 5 个 spec 型 + 5 个广播型设备的 init/report 函数（见设备清单） |
+| `miot_profiles` | 设备档案 | 12 个档案的 init/report 函数（见[设备清单](#设备清单)） |
 
 ## 已验证的运行环境
 
@@ -267,7 +257,7 @@ void app_main(void) {
 - [docs/psk-auth.md](docs/psk-auth.md) —— legacy PSK（帧格式 / 已实现的状态机 / 实测开关）
 - [docs/protocol.md](docs/protocol.md) —— 协议文档（认证流程 / ag2 / spec v2 帧格式 / S400 数据面）
 - [docs/testing.md](docs/testing.md) —— 逐设备实机验证清单（§20 是全量构建回归门禁）
-- [tools/build_all.sh](tools/build_all.sh) —— **改完 SDK 先跑这个**：一轮编译 `esp32/` 下全部 14 个工程，末尾打 `PASS (14)` / `FAIL` 汇总，专治「改了共享函数签名、某个工程静默编译不过」
+- [tools/build_all.sh](tools/build_all.sh) —— **改完 SDK 先跑这个**：一轮编译 `esp32/` 下全部 24 个工程，末尾打 `PASS (24)` / `FAIL` 汇总，专治「改了共享函数签名、某个工程静默编译不过」
 - [.github/ISSUE_TEMPLATE/](.github/ISSUE_TEMPLATE/) —— 实测记录模板（PSK / 标准认证），串口日志必填
 - [test/test_spec.c](test/test_spec.c) —— 黄金样本即实测帧
 - [test/test_psk.c](test/test_psk.c) —— PSK 状态机单测（帧序列 / 模式分流 / KDF 标签）
