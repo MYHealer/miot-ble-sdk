@@ -155,6 +155,12 @@ void app_main(void) {
 
 ## 设备清单
 
+> **范围说明**：下表 25 台全部是 **BLE GATT 直连**形态——手机 ↔ 设备建立连接后直连通信，
+> 设备在米家 App 里可见、可绑定、可读写属性，但**不支持云端下发**（手机不在附近就控制不了）。
+> 需要「网关转发 / 小爱语音 / 远程控制」的是 **BLE Mesh** 形态，那是另一套配网与身份校验，
+> 本 SDK 不覆盖，协议分析与实测边界见 [docs/mesh-ref/provisioning/](docs/mesh-ref/provisioning/)。
+> 两者的完整对比见 [docs/mesh-ref/README.md](docs/mesh-ref/README.md)。
+
 25 台设备，全部在米家 Android App 上做过实机验证（扫描添加 → 绑定 → 数据互通），仅 24 号（LED 灯泡）未通过、保留作协议研究记录：
 
 - ✅ 实测通过　⚠️ 能用但带已知问题　❌ 未打通（保留作协议研究记录）
