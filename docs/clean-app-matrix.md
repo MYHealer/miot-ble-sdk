@@ -46,6 +46,7 @@
 | 25 | 小米水浸卫士2 | `0x6375` | 广播型 | ✅ 扫描即可见（**2026-11-20 独立工程实测：绑定 3/3 + 三属性上云双向**） | `esp32/flood2_adv`，见 testing §35。`xiaomi.flood.oh83w`：底部浸水 2.1006=`0x4806`(bool)、顶部淋水 2.1123=`0x487B`(bool)、电量 3.1003=`0x4C03`(u8)，三槽一帧一对象轮播，bot/top/batt 双向 code=0 |
 | 26 | 闪极100W迷你充电器（蓝牙版） | `0x1E1C` | **广播型+控制类** | ✅ 扫描即可见（**2026-11-20 独立工程实测：自动列出 + 标准认证绑定 3/3；控制属性表 PC 全测通过**） | `esp32/outlet_adv`，见 testing §36。`sharge.plug.sj01`：全库唯一 BLE 插座（余皆 pid=8 WiFi）。可写属性 2.1 on(bool RW)/2.7 timer/2.8 timer-off。★**直连型**：控制走手机 GATT 不经过网关，云端 `isOnline` 常 false、云读 `-704010000` 属正常；验收看 set→on_set→回推闭环，不看云读 |
 | 27 | 米家声波电动牙刷 T501 | `0x1FF3` | 广播型 | ✅ 扫描即可见（**2026-11-20 独立工程实测：绑定 + 电量/充电/刷头三属性上云双向**） | `esp32/toothbrush_adv`，见 testing §37。`soocare.toothbrush.1501`：battery 3.1003=`0x4C03`(u8)、charging 3.1034=`0x4C22`(enum)、brush-head 4.1041=`0x5029`(u8)，新式 eid 公式（piid≥1000）。★手环（miwear.watch.*）虽 pid=6 但走 MiWear 私有协议栈，不可做；牙刷是标准 spec |
+| 28 | 米家伺服扫振电动牙刷 Pro | `0x6800` | 广播型 | ✅ 扫描即可见（**2026-11-20 独立工程实测：绑定 + 电量/充电/刷头三属性上云双向**） | `esp32/brushpro_adv`，见 testing §38。`xiaomi.toothbrush.24p`：battery 3.1003=`0x4C03`(u8)、charging 3.1034=`0x4C22`(enum)、brush-head 4.1041=`0x5029`(u8 **0~100**，比 T501 的 0~180 窄)。旗舰款 UI 更丰富 |
 
 ※ 夜灯2 有两个 PID：**0x03DD**（MUE4094RT，2026-10-31 LIGHT_SHELL 实测）与
   **0x07F6**（yeelink.light.nl1，2026-11-19 独立工程实测：绑定 4/4 + 设备页完整渲染 +
