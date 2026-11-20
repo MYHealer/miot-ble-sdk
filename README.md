@@ -18,7 +18,7 @@
 ┌──────────────────────────────────────────────────────────┐
 │  你的产品逻辑（体重计 / 温湿度计 / 灯 / 任意 MIoT 设备）      │
 ├──────────────────────────────────────────────────────────┤
-│  miot_profiles 已验证设备档案（24 台设备，见下方设备清单）     │
+│  miot_profiles 已验证设备档案（25 台设备，见下方设备清单）     │
 │  miot_beacon   MiBeacon v5 加密广播帧（不建连接的传感器）      │
 ├──────────────────────────────────────────────────────────┤
 │  miot_device   组合层：加密通道+分派+属性表+主动上报           │
@@ -155,7 +155,7 @@ void app_main(void) {
 
 ## 设备清单
 
-24 台设备，全部在米家 Android App 上做过实机验证（扫描添加 → 绑定 → 数据互通），仅第 24 台未通过、保留作协议研究记录：
+25 台设备，全部在米家 Android App 上做过实机验证（扫描添加 → 绑定 → 数据互通），仅 24 号（LED 灯泡）未通过、保留作协议研究记录：
 
 - ✅ 实测通过　⚠️ 能用但带已知问题　❌ 未打通（保留作协议研究记录）
 - 能否用**官方原版 App（无模块、未 root）**添加，逐条对照 → [docs/clean-app-matrix.md](docs/clean-app-matrix.md)
@@ -187,6 +187,7 @@ void app_main(void) {
 | 22 | 花花草草监测仪 | `hhcc.plantmonitor.v1` | `0x0098` | 广播 | ✅ 土壤湿度/肥力/光照/气温四槽<br>土壤湿度用 `0x1008`，别用 `0x1006` | [`plant_adv`](esp32/plant_adv) |
 | 23 | 空气检测仪（树色） | `shuse.airm.ss006` | `0x6651` | 广播 | ✅ 温/湿/AQI/CO₂/HCHO/TVOC 六属性双向<br>HCHO·TVOC 官方 range [0,2]，超范围打坏读口 | [`airm_adv`](esp32/airm_adv) |
 | 24 | LED 灯泡（蓝牙 Mesh 版） | MJDP003 | `0x06EB`（推断） | Mesh spec | ❌ `-27`，拒绝点在 PID 类型层 | [`bulb_gatt`](esp32/bulb_gatt) |
+| 25 | 烟感卫士 2 | `xiaomi.sensor_smoke.yg2` | `0x7ABA` | 广播 | ✅ status/电量双向<br>status 是 enum(1 正常/2 告警)，不是 bool；MAC 撞号会被米家按地址去重过滤 | [`smoke2_adv`](esp32/smoke2_adv) |
 
 **入门推荐**：蓝牙温湿度计 2 —— 标准认证、免网关、属性可验证，链路注释最全，最适合当模板改新型号。
 
@@ -211,7 +212,7 @@ void app_main(void) {
 另：**验证时先关掉 App 设备页**——页面打开会占住 BLE 连接，网关收不到广播，会误判「设备不上报」。
 
 `multi_dev` 一个工程内置 **12 个档案**（串口 `dev` 查看、`dev N` 切换，切档自动擦身份重启），
-适合对比同一套骨架在不同 PID 下的差异；上表 24 台里除 15 号外都有独立工程。
+适合对比同一套骨架在不同 PID 下的差异；上表 25 台里除 15 号（走 `examples/`）外都有独立工程。
 
 > ⚠️ 两台带已知问题、**不要当「开箱即用」演示**：**夜灯 2**（详情页偶发超时 / 删设备重加前必须
 > 先 `factory` / 无「如果」触发条件）与 **驱蚊器智能版**。完整记录见
@@ -264,7 +265,7 @@ void app_main(void) {
 - [docs/mesh-ref/](docs/mesh-ref/) —— **BLE Mesh 资料集**：官方接入文档、协议要点汇总、网关侧解析脚本
 - [docs/mesh-ref/provisioning/](docs/mesh-ref/provisioning/) —— **BLE Mesh 配网协议逆向笔记**（7 篇）：完整时序、通道与指令、错误码、实测边界（20s 链路寿命）、安全设计分析、中继工程实践
 - [tools/mesh/](tools/mesh/) —— mesh 工具：多帧重组 + 熵值分析、btsnoop 解析、私钥派生假设验证
-- [tools/build_all.sh](tools/build_all.sh) —— **改完 SDK 先跑这个**：一轮编译 `esp32/` 下全部 24 个工程，末尾打 `PASS (24)` / `FAIL` 汇总，专治「改了共享函数签名、某个工程静默编译不过」
+- [tools/build_all.sh](tools/build_all.sh) —— **改完 SDK 先跑这个**：一轮编译 `esp32/` 下全部 25 个工程，末尾打 `PASS (25)` / `FAIL` 汇总，专治「改了共享函数签名、某个工程静默编译不过」
 - [.github/ISSUE_TEMPLATE/](.github/ISSUE_TEMPLATE/) —— 实测记录模板（PSK / 标准认证），串口日志必填
 - [test/test_spec.c](test/test_spec.c) —— 黄金样本即实测帧
 - [test/test_psk.c](test/test_psk.c) —— PSK 状态机单测（帧序列 / 模式分流 / KDF 标签）

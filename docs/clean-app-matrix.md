@@ -42,7 +42,7 @@
 | 21 | 领普压力有无传感器 | `0x3F4C` | 广播型 | ✅ 扫描即可见（**2026-11-19 独立工程实测：绑定 3/3 + 有无压力/电量上云双向**） | `esp32/senpres_adv`，见 testing §31。`linp.senpres.ps1bb`：有无压力 2.1060=`0x483C`(bool) / 电量 3.1003=`0x4C03`(uint8 %)，eid 公式。坑：事件帧须带刚触发对象；验证时先关设备页 |
 | 22 | 花花草草监测仪 | `0x0098` | 广播型 | ✅ 扫描即可见（**2026-11-19 独立工程实测：绑定 + 绑定植物绿萝 + 四属性上云**） | `esp32/plant_adv`，见 testing §32。`hhcc.plantmonitor.v1`：温度 0x1004 / 土壤湿度 0x1008 / 光照 0x1007(u24) / 土壤EC 0x1009。坑：湿度用 0x1008 非 0x1006；绑定植物必须选无跳过 |
 | 23 | 树色空气检测仪（BLE） | `0x6651` | 广播型 | ✅ 扫描即可见（bt_match=0 但 resolve=3） | `esp32/airm_adv`，见 testing §33。六属性 beacon 双向通过（HCHO/TVOC 需值∈[0,2] 满密度连发） |
-| 24 | 小米烟感卫士2 | `0x7ABA` | 广播型 | ✅ 扫描即可见（**2026-11-20 独立工程实测：绑定 + status/battery 上云双向**） | `esp32/smoke2_adv`，见 testing §35。`xiaomi.sensor_smoke.yg2`：status 2.1004=**0x4804**(u8 enum 1正常/2告警)、battery 6.1132=**0x5884**(u8 enum 0充足/1不足)。★坑：MAC 必须账号内未占用，撞车则米家按 MAC 去重过滤不显示 |
+| 24 | 小米烟感卫士2 | `0x7ABA` | 广播型 | ✅ 扫描即可见（**2026-11-20 独立工程实测：绑定 + status/battery 上云双向**） | `esp32/smoke2_adv`，见 testing §34。`xiaomi.sensor_smoke.yg2`：status 2.1004=**0x4804**(u8 enum 1正常/2告警)、battery 6.1132=**0x5884**(u8 enum 0充足/1不足)。★坑：MAC 必须账号内未占用，撞车则米家按 MAC 去重过滤不显示 |
 
 ※ 夜灯2 有两个 PID：**0x03DD**（MUE4094RT，2026-10-31 LIGHT_SHELL 实测）与
   **0x07F6**（yeelink.light.nl1，2026-11-19 独立工程实测：绑定 4/4 + 设备页完整渲染 +
