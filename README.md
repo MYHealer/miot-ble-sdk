@@ -51,7 +51,10 @@ src/                对应实现（纯 C11，无 OS 依赖）
 port/esp32/         ESP32 + NimBLE + mbedTLS 移植参考
 examples/           每台设备一个可运行演示（host 编译，打印帧/解析结果）
 test/               黄金样本单测（样本即真机抓包）
+tools/              build_all.sh（全量编译门禁）/ read_serial.py / serial_tap.py
 docs/               protocol.md（协议）/ testing.md（逐设备实机验收 + 踩坑）
+docs/mesh-ref/      BLE Mesh 参考资料 + provisioning/（配网协议逆向笔记 7 篇）
+tools/mesh/         mesh 侧工具：多帧重组熵分析 / btsnoop 解析 / 私钥派生验证
 ```
 
 ## 快速开始
@@ -224,6 +227,7 @@ void app_main(void) {
 | **legacy PSK 绑定**（驱蚊器 / 夜灯重绑 / 部分老型号） | ⚠️ 已实现·未实测 | 与标准认证**同构**（同一 ECDH P-256，换 `smartcfg-*` HKDF 标签，多一帧 `0x04 dev_sign`）。代码在 `miot_auth`（`MIOT_AUTH_MODE_PSK`，默认 `AUTO` 由启动帧自动判定），`test/test_psk.c` 覆盖状态流转。**缺的是真机验证**，共三个未知：① App 扫描阶段认哪种广播形态（已做候选表轮播探测，[psk-auth.md](docs/psk-auth.md) §6.1）② `dev_sign` 签什么 ③ 云端 `ble_psk_*` 是否仍开放 → 实测结果请用 [PSK 实测 issue 模板](.github/ISSUE_TEMPLATE/psk-field-test.yml)，串口日志必填 |
 | 「手机网络异常」/ `设备绑定账号失败 (104,did=…)` | ⚠️ 见 FAQ | 云端查不到该 did 的产品档案（自造 did、PID 不符、或 92B 帧未解出）。**与网络无关**，见 [docs/troubleshooting.md](docs/troubleshooting.md) Q1 |
 | 门锁 / security-chip 类 | ❌ 硬墙 | 云端强制 X.509 芯片证书链（`securityChip=1`），无法借壳 |
+| **BLE Mesh 形态**（要云端下发 / 远程控制） | ❌ 硬墙·另开一路 | mesh 配网要求设备用**私钥**签 `pkg4`，服务器验签；私钥产线随机烧录、空口不泄露、派生假设已证伪。协议细节与实测边界见 [docs/mesh-ref/provisioning/](docs/mesh-ref/provisioning/)，要做 mesh 产品只能走官方模组（自带合法证书） |
 | 「未连接蓝牙网关」提示 | ⚠️ 环境侧 | 网关/云端设备缓存问题，插拔网关 + 重启 App 可解；固件侧无拒连记录（多台复现） |
 | 3 Pro「未连接手机」/ 手机连不上 | ℹ️ 正常设计 | 真机 3 Pro 是**按键连接模式**：平时不发可连接广播，只有按键后才置 `solicited=1` 开 120s 唤醒窗口。App 平时显示「未连接手机」是常态，数据走广播→网关，**不依赖手机连接**；`esp32/multi_dev` 用 BOOT 键等价模拟按键 |
 | App 打开设备页即重启（`MEPC=0`） | ✅ 已修 | `MIOT_SPEC_MAX_ARGS=6` 装不下 3 Pro 一次 GET 的 8 个属性，越界写覆盖返回地址。现为 12，且解析层强制钳制 `argc`。详见提交 `fix(spec): App 读属性即重启` |
@@ -257,6 +261,9 @@ void app_main(void) {
 - [docs/psk-auth.md](docs/psk-auth.md) —— legacy PSK（帧格式 / 已实现的状态机 / 实测开关）
 - [docs/protocol.md](docs/protocol.md) —— 协议文档（认证流程 / ag2 / spec v2 帧格式 / S400 数据面）
 - [docs/testing.md](docs/testing.md) —— 逐设备实机验证清单（§20 是全量构建回归门禁）
+- [docs/mesh-ref/](docs/mesh-ref/) —— **BLE Mesh 资料集**：官方接入文档、协议要点汇总、网关侧解析脚本
+- [docs/mesh-ref/provisioning/](docs/mesh-ref/provisioning/) —— **BLE Mesh 配网协议逆向笔记**（7 篇）：完整时序、通道与指令、错误码、实测边界（20s 链路寿命）、安全设计分析、中继工程实践
+- [tools/mesh/](tools/mesh/) —— mesh 工具：多帧重组 + 熵值分析、btsnoop 解析、私钥派生假设验证
 - [tools/build_all.sh](tools/build_all.sh) —— **改完 SDK 先跑这个**：一轮编译 `esp32/` 下全部 24 个工程，末尾打 `PASS (24)` / `FAIL` 汇总，专治「改了共享函数签名、某个工程静默编译不过」
 - [.github/ISSUE_TEMPLATE/](.github/ISSUE_TEMPLATE/) —— 实测记录模板（PSK / 标准认证），串口日志必填
 - [test/test_spec.c](test/test_spec.c) —— 黄金样本即实测帧
