@@ -17,7 +17,12 @@ size_t miot_props_encode(const miot_prop_t *p, uint8_t *out, size_t cap)
 {
     if (cap < 6) return 0;
     uint8_t v[4], vlen;
-    int32_t iv = (p->size == 1) ? (int32_t)(*(uint8_t *)p->ptr) : *(int32_t *)p->ptr;
+    /* ★按 size 精确读：size=2(u16) 若按 int32 读会越界读相邻变量
+     * （磁吸灯实测：读到的高位字节是邻居，编进包后值错乱）。 */
+    int32_t iv;
+    if (p->size == 1)      iv = (int32_t)(*(uint8_t *)p->ptr);
+    else if (p->size == 2) iv = (int32_t)(*(uint16_t *)p->ptr);
+    else                   iv = *(int32_t *)p->ptr;
 
     switch (p->type) {
     case MIOT_TYPE_BOOL:  v[0] = iv ? 1 : 0; vlen = 1; break;
@@ -58,8 +63,13 @@ bool miot_props_apply(miot_prop_t *p, uint8_t vtype, const uint8_t *v, uint8_t v
     }
     if (p->type == MIOT_TYPE_BOOL) iv = iv ? 1 : 0;
 
-    if (p->size == 1) *(uint8_t *)p->ptr = (uint8_t)iv;
-    else              *(int32_t *)p->ptr = iv;
+    /* ★按 size 精确写：size=2(u16) 若写 4 字节 int32 会踩掉相邻变量。
+     * 磁吸灯实测根因：拖色温 SET 7.3 → *(int32_t*)&v_ct 写 4 字节，
+     * 把后面的 v_on/v_bright/v_light_mode 全踩成 0 → App GET 读到
+     * bright=0，亮度突变归 0。 */
+    if (p->size == 1)      *(uint8_t *)p->ptr  = (uint8_t)iv;
+    else if (p->size == 2) *(uint16_t *)p->ptr = (uint16_t)iv;
+    else                   *(int32_t *)p->ptr  = iv;
 
     if (p->on_set) p->on_set(p);
     return true;
