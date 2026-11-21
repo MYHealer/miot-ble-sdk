@@ -204,8 +204,13 @@ static void handle_get(miot_device_t *d, const miot_spec_packet_t *pkt)
 
         miot_prop_t *mp = miot_props_find(d->props, d->prop_cnt, siid, piid);
         if (mp) {
-            /* 从本地存储读出再按声明类型编码 */
-            int32_t iv = (mp->size == 1) ? (int32_t)(*(uint8_t *)mp->ptr) : *(int32_t *)mp->ptr;
+            /* 从本地存储读出再按声明类型编码。★按 size 精确读：
+             * size=2(u16) 若按 int32 读会把相邻变量的字节一起读进来
+             * （磁吸灯实测：GET 回包高位错乱）。 */
+            int32_t iv;
+            if (mp->size == 1)      iv = (int32_t)(*(uint8_t *)mp->ptr);
+            else if (mp->size == 2) iv = (int32_t)(*(uint16_t *)mp->ptr);
+            else                    iv = *(int32_t *)mp->ptr;
             fill_value(&vals[i], siid, piid, mp->type, 0, &iv);
             continue;
         }
