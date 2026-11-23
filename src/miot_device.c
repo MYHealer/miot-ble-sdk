@@ -182,8 +182,10 @@ static void fill_value(miot_spec_value_t *v, uint8_t siid, uint16_t piid,
     if (!src) return;
     switch (type) {
     case MIOT_TYPE_BOOL:
-    case MIOT_TYPE_U8:    v->val.u8 = *(const uint8_t *)src; break;
-    case MIOT_TYPE_U16:   v->val.u16 = *(const uint16_t *)src; break;
+    case MIOT_TYPE_U8:
+    case MIOT_TYPE_I8:    v->val.u8 = *(const uint8_t *)src; break;
+    case MIOT_TYPE_U16:
+    case MIOT_TYPE_I16:   v->val.u16 = *(const uint16_t *)src; break;
     case MIOT_TYPE_U32:
     case MIOT_TYPE_I32:   v->val.u32 = *(const uint32_t *)src; break;
     case MIOT_TYPE_FLOAT: v->val.f = *(const float *)src; break;
