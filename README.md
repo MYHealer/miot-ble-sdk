@@ -200,6 +200,7 @@ void app_main(void) {
 | 29 | 米家伺服扫振电动牙刷 Pro | `xiaomi.toothbrush.24p` | `0x6800` | 广播 | ✅ 电量/充电/刷头三属性双向<br>旗舰款，UI 更丰富（本周刷牙/覆盖率/参数设置）；刷头范围 0~100 | [`brushpro_adv`](esp32/brushpro_adv) |
 | 30 | 小米汽车磁吸补光灯 | `careco.nlight.o654` | `0x6266` | spec 直连 | ✅ 开关/亮度/色温/模式/对时 set→回推全闭环<br>仓库首个可调光+调色温本地控制类；亮度/色温滑块拖动实时 SET，控制走手机 GATT 不经网关 | [`carlight_adv`](esp32/carlight_adv) |
 | 31 | PTX 无线开关（蓝牙版） | `090615.remote.btsw1` | `0x38BB` | 广播 | ✅ 绑定 + 单击/双击/长按/低电量四事件上报<br>事件对象号 0x4E0C/0x4E0D/0x4E0E/0x4C01；电量 ≤15% 快广播补发低电事件 | [`ptxsw1_adv`](esp32/ptxsw1_adv) |
+| 32 | 米家恒温电水壶 Pro | `yunmi.kettle.v13` | `0x1809` | spec 直连 | ✅ 17 属性全读 + 档位/时长/水温双向<br>★3.3 官方标 R 但 App 当可写下发，必须注册 RW 并联动水温；水温由传感器回推 | [`kettle_adv`](esp32/kettle_adv) |
 
 **入门推荐**：蓝牙温湿度计 2 —— 标准认证、免网关、属性可验证，链路注释最全，最适合当模板改新型号。
 
