@@ -26,8 +26,10 @@ size_t miot_props_encode(const miot_prop_t *p, uint8_t *out, size_t cap)
 
     switch (p->type) {
     case MIOT_TYPE_BOOL:  v[0] = iv ? 1 : 0; vlen = 1; break;
-    case MIOT_TYPE_U8:    v[0] = (uint8_t)iv; vlen = 1; break;
-    case MIOT_TYPE_U16:   v[0] = (uint8_t)iv; v[1] = (uint8_t)(iv >> 8); vlen = 2; break;
+    case MIOT_TYPE_U8:
+    case MIOT_TYPE_I8:    v[0] = (uint8_t)iv; vlen = 1; break;
+    case MIOT_TYPE_U16:
+    case MIOT_TYPE_I16:   v[0] = (uint8_t)iv; v[1] = (uint8_t)(iv >> 8); vlen = 2; break;
     case MIOT_TYPE_U32:
     case MIOT_TYPE_I32:   memcpy(v, &iv, 4); vlen = 4; break;
     case MIOT_TYPE_FLOAT: { float f = (float)iv; memcpy(v, &f, 4); vlen = 4; } break;

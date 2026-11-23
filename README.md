@@ -202,6 +202,7 @@ void app_main(void) {
 | 31 | PTX 无线开关（蓝牙版） | `090615.remote.btsw1` | `0x38BB` | 广播 | ✅ 绑定 + 单击/双击/长按/低电量四事件上报<br>事件对象号 0x4E0C/0x4E0D/0x4E0E/0x4C01；电量 ≤15% 快广播补发低电事件 | [`ptxsw1_adv`](esp32/ptxsw1_adv) |
 | 32 | 米家恒温电水壶 Pro | `yunmi.kettle.v13` | `0x1809` | spec 直连 | ✅ 17 属性全读 + 档位/时长/水温双向<br>★3.3 官方标 R 但 App 当可写下发，必须注册 RW 并联动水温；水温由传感器回推 | [`kettle_adv`](esp32/kettle_adv) |
 | 33 | 米家智能香氛机-杯托版 | `xiaomi.diffuser.xwczxf` | `0x39E6` | spec 直连 | ✅ 11 属性全读 + 浓度/香型双向<br>★官方标 R 但 App 当可写下发，全部注册 RW；浓度 u16 val=150=5档 | [`diffuser_adv`](esp32/diffuser_adv) |
+| 34 | 小米磁吸散热背夹 | `xiaomi.cooler.r02p` | `0x52AA` | spec 直连 | ✅ 14 属性全读 + 模式/温度/灯效全控<br>★修复 SDK 两坑：I8 编码缺失致温度 `--`；BOOL SET 新格式帧被旧格式分支误判 rc=-4 卡死延时开关 | [`cooler_adv`](esp32/cooler_adv) |
 
 **入门推荐**：蓝牙温湿度计 2 —— 标准认证、免网关、属性可验证，链路注释最全，最适合当模板改新型号。
 

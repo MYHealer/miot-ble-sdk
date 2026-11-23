@@ -36,8 +36,10 @@ size_t miot_spec_encode_value(const miot_spec_value_t *v, uint8_t *out, size_t c
     case MIOT_TYPE_BOOL:
         buf[0] = v->val.u8 ? 1 : 0; vlen = 1; break;
     case MIOT_TYPE_U8:
+    case MIOT_TYPE_I8:
         buf[0] = v->val.u8; vlen = 1; break;
     case MIOT_TYPE_U16:
+    case MIOT_TYPE_I16:
         put16(buf, v->val.u16); vlen = 2; break;
     case MIOT_TYPE_U32:
     case MIOT_TYPE_I32:
@@ -237,20 +239,25 @@ static int parse_object(const uint8_t *p, size_t remain, miot_spec_value_t *v)
     if (remain < 5) return -1;
     v->siid = p[0];
     v->piid = get16(p + 1);
-    /* ★App→设备的 SET 条目同样是 `(type<<12)|len`（docs/protocol.md §4.2 第 4 条）。
-     * 旧代码固定按「type16 + len8」7 字节头解析，遇到大 SET 必然错位 → rc=-4 →
-     * 整帧丢弃 → App 无限重发（23:47 实测）。这里做双格式判别。 */
+    /* ★App→设备 SET 条目用 `(type<<12)|len`（docs/protocol.md §4.2 第 4 条）；
+     * 早期 host 回归测试用旧格式 `type16 + len8`。两种必须兼容。
+     * type<=10 高 4 位恒为 0，所以 type>=1 的新格式（如 U8=1 → rawt=0x1001）
+     * 靠高 4 位可判别；唯一歧义是 BOOL(0) 新格式 rawt=(0<<12)|1=0x0001，
+     * 与旧格式 U8(type=1,rawt=0x0001) 撞车 —— 靠 remain 是否精确等于新格式
+     * 长度判别：App 延时关闭 5.1 单对象帧 remain=6=5+len → 新格式 BOOL；
+     * host 旧格式帧 remain=7>6 → 旧格式。散热背夹 5.1 实测 rc=-4 卡死修复。 */
     uint16_t rawt = get16(p + 3);
     uint8_t vtype;
     size_t vlen;
     const uint8_t *val;
     size_t adv;
-    if ((rawt >> 12) != 0) {
+    size_t newlen = 5 + (rawt & 0x0FFF);
+    if ((rawt >> 12) != 0 || remain == newlen) {
         vtype = (uint8_t)(rawt >> 12);
         vlen  = rawt & 0x0FFF;
         val   = p + 5;
-        adv   = 5 + vlen;
-    } else if (remain >= 6) {                  /* 旧格式兼容：type16 高 4 位为 0 */
+        adv   = newlen;
+    } else if (remain >= 6) {                  /* 旧格式兼容：type16 + len8 */
         vtype = (uint8_t)rawt;
         vlen  = p[5];
         val   = p + 6;
